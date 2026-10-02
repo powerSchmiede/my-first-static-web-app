@@ -1,0 +1,11 @@
+{
+  "name": "gkk-apps-api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/functions/*.js",
+  "dependencies": {
+    "@azure/data-tables": "^13.2.2",
+    "@azure/functions": "^4.5.0",
+    "@azure/storage-blob": "^12.24.0"
+  }
+}

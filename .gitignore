@@ -23,3 +23,7 @@ yarn-debug.log*
 yarn-error.log*
 # lokale Design-Vorlagen
 /HTML-Vorlagen
+
+# API
+/api/node_modules
+/api/local.settings.json
