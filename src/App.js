@@ -198,10 +198,16 @@ function Tile({ title, href, icon, art }) {
     : <div className="tile tile-disabled" aria-disabled="true">{content}</div>;
 }
 
+// Aktive Kacheln (mit Link) zuerst, sonst bleibt die Reihenfolge aus der Liste erhalten.
+const sortedTiles = [
+  ...tiles.filter(tile => tile.href),
+  ...tiles.filter(tile => !tile.href),
+];
+
 function App() {
   return (
     <main className="tiles">
-      {tiles.map(tile => <Tile key={tile.title} {...tile} />)}
+      {sortedTiles.map(tile => <Tile key={tile.title} {...tile} />)}
     </main>
   );
 }
