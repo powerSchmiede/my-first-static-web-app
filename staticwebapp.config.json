@@ -32,5 +32,19 @@
     },
     "platform": {
         "apiRuntime": "node:20"
+    },
+    "auth": {
+        "identityProviders": {
+            "azureActiveDirectory": {
+                "registration": {
+                    "openIdIssuer": "https://kanzleimind.ciamlogin.com/55d6bdad-d303-4e5a-bbe1-fb96d7664394/v2.0",
+                    "clientIdSettingName": "AAD_CLIENT_ID",
+                    "clientSecretSettingName": "AAD_CLIENT_SECRET"
+                },
+                "login": {
+                    "loginParameters": ["scope=openid profile email"]
+                }
+            }
+        }
     }
 }
