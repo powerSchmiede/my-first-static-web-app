@@ -27,12 +27,8 @@ const DEFAULT_APPS = [
   { id: 'ki-bild-check', title: 'KI-Bild-Check', type: 'link', url: '/tools/ki-bild-check/index.html', icon: 'image', background: 'squares' },
 ];
 
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+const { HttpError } = require('./errors');
+
 
 let ready;
 

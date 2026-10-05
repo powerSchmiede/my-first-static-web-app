@@ -1,0 +1,211 @@
+// Sicherheitstests für Mandantentrennung und Autorisierung.
+// Voraussetzung: lokaler Azurite-Speicher (UseDevelopmentStorage=true).
+// Aufruf: npm test (im Ordner api)
+
+const { test, before } = require('node:test');
+const assert = require('node:assert/strict');
+const crypto = require('crypto');
+
+process.env.STORAGE_CONNECTION_STRING = process.env.STORAGE_CONNECTION_STRING || 'UseDevelopmentStorage=true';
+const run = crypto.randomUUID().slice(0, 8);
+const PLATFORM_EMAIL = `owner-${run}@platform.test`;
+process.env.PLATFORM_ADMIN_EMAILS = PLATFORM_EMAIL;
+delete process.env.ACS_CONNECTION_STRING;
+
+const functions = require('@azure/functions');
+const routes = [];
+functions.app.http = (name, options) => routes.push({ name, ...options });
+require('../src/functions/organizations');
+require('../src/functions/apps');
+
+function principal(name, email, provider = 'aad') {
+  return { identityProvider: provider, userId: `${name}-${run}`, userDetails: email, userRoles: ['anonymous', 'authenticated'], claims: [{ typ: 'email', val: email }, { typ: 'name', val: name }] };
+}
+
+const owner = principal('owner', PLATFORM_EMAIL);
+const alice = principal('alice', `alice-${run}@a.test`);
+const bob = principal('bob', `bob-${run}@b.test`);
+const carol = principal('carol', `carol-${run}@a.test`);
+const mallory = principal('mallory', `mallory-${run}@evil.test`);
+
+function match(template, path) {
+  const t = template.split('/');
+  const p = path.split('/');
+  if (t.length !== p.length) return null;
+  const params = {};
+  for (let i = 0; i < t.length; i++) {
+    const m = /^\{(\w+)\}$/.exec(t[i]);
+    if (m) params[m[1]] = p[i];
+    else if (t[i] !== p[i]) return null;
+  }
+  return params;
+}
+
+async function call(method, path, { as, body } = {}) {
+  for (const route of routes) {
+    const params = match(route.route, path);
+    if (!params || !route.methods.includes(method)) continue;
+    const headers = {};
+    if (as) headers['x-ms-client-principal'] = Buffer.from(JSON.stringify(as)).toString('base64');
+    if (body) headers['content-type'] = 'application/json';
+    const request = new functions.HttpRequest({
+      method,
+      url: `http://localhost/api/${path}`,
+      headers,
+      params,
+      body: body ? { string: JSON.stringify(body) } : undefined,
+    });
+    const result = await route.handler(request, { error: () => {}, log: () => {} });
+    return { status: result.status || 200, body: result.jsonBody };
+  }
+  throw new Error(`Keine Route für ${method} ${path}`);
+}
+
+const tokenOf = response => decodeURIComponent(response.body.inviteLink.split('#token=')[1]);
+
+const state = {};
+
+before(async () => {
+  const orgA = await call('POST', 'platform/orgs', { as: owner, body: { name: `Org A ${run}`, adminEmail: alice.claims[0].val } });
+  assert.equal(orgA.status, 201);
+  state.orgA = orgA.body.organization.id;
+  assert.equal((await call('POST', 'invitations/accept', { as: alice, body: { token: tokenOf(orgA) } })).status, 200);
+
+  const orgB = await call('POST', 'platform/orgs', { as: owner, body: { name: `Org B ${run}`, adminEmail: bob.claims[0].val } });
+  state.orgB = orgB.body.organization.id;
+  state.orgBToken = tokenOf(orgB);
+  assert.equal((await call('POST', 'invitations/accept', { as: bob, body: { token: state.orgBToken } })).status, 200);
+
+  const invite = await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email: carol.claims[0].val, role: 'OrgUser' } });
+  assert.equal(invite.status, 201);
+  state.carolToken = tokenOf(invite);
+
+  const bobUsers = await call('GET', `orgs/${state.orgB}/users`, { as: bob });
+  state.bobId = bobUsers.body[0].id;
+});
+
+test('Einladung nur mit passender E-Mail-Adresse annehmbar', async () => {
+  const response = await call('POST', 'invitations/accept', { as: mallory, body: { token: state.carolToken } });
+  assert.equal(response.status, 403);
+  assert.equal(response.body.code, 'email_mismatch');
+});
+
+test('Einladung ist nur einmal verwendbar', async () => {
+  assert.equal((await call('POST', 'invitations/accept', { as: carol, body: { token: state.carolToken } })).status, 200);
+  const again = await call('POST', 'invitations/accept', { as: carol, body: { token: state.carolToken } });
+  assert.equal(again.status, 404);
+});
+
+test('Erster Benutzer wird Organization Admin, eingeladener Benutzer bekommt die eingeladene Rolle', async () => {
+  const meAlice = await call('GET', 'me', { as: alice });
+  assert.equal(meAlice.body.membership.role, 'OrgAdmin');
+  assert.equal(meAlice.body.membership.organizationId, state.orgA);
+  const meCarol = await call('GET', 'me', { as: carol });
+  assert.equal(meCarol.body.membership.role, 'OrgUser');
+});
+
+test('Ohne Anmeldung kein Zugriff', async () => {
+  assert.equal((await call('GET', `orgs/${state.orgA}/users`)).status, 401);
+  assert.equal((await call('GET', 'platform/orgs')).status, 401);
+});
+
+test('Nicht zugelassener Anmeldeanbieter gilt als nicht angemeldet', async () => {
+  const fake = principal('alice', alice.claims[0].val, 'github');
+  assert.equal((await call('GET', `orgs/${state.orgA}/users`, { as: fake })).status, 401);
+});
+
+test('IDOR: Org Admin sieht keine fremde Organisation', async () => {
+  assert.equal((await call('GET', `orgs/${state.orgB}`, { as: alice })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgB}/users`, { as: alice })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgB}/invitations`, { as: alice })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgB}/audit`, { as: alice })).status, 404);
+});
+
+test('IDOR: Org Admin kann fremde Benutzer nicht ändern, auch nicht über die eigene Organisations-URL', async () => {
+  assert.equal((await call('PATCH', `orgs/${state.orgB}/users/${state.bobId}`, { as: alice, body: { status: 'Disabled' } })).status, 404);
+  assert.equal((await call('DELETE', `orgs/${state.orgB}/users/${state.bobId}`, { as: alice })).status, 404);
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/users/${state.bobId}`, { as: alice, body: { status: 'Disabled' } })).status, 404);
+  const bobUsers = await call('GET', `orgs/${state.orgB}/users`, { as: bob });
+  assert.equal(bobUsers.body[0].status, 'Active');
+});
+
+test('IDOR: Einladungen fremder Organisationen nicht erzeugbar', async () => {
+  assert.equal((await call('POST', `orgs/${state.orgB}/invitations`, { as: alice, body: { email: `x-${run}@b.test`, role: 'OrgAdmin' } })).status, 404);
+});
+
+test('Organization User hat keinen Zugriff auf die Benutzerverwaltung', async () => {
+  assert.equal((await call('GET', `orgs/${state.orgA}/users`, { as: carol })).status, 403);
+  assert.equal((await call('POST', `orgs/${state.orgA}/invitations`, { as: carol, body: { email: `y-${run}@a.test` } })).status, 403);
+});
+
+test('Keine Plattformrechte für Org Admins', async () => {
+  assert.equal((await call('GET', 'platform/orgs', { as: alice })).status, 403);
+  assert.equal((await call('POST', 'platform/orgs', { as: alice, body: { name: 'Hack', adminEmail: 'h@h.test' } })).status, 403);
+  assert.equal((await call('POST', 'manage/apps', { as: alice, body: { title: 'x', type: 'none', icon: 'chat', background: 'rings' } })).status, 403);
+});
+
+test('Unbekannte Rollen werden abgelehnt', async () => {
+  assert.equal((await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email: `z-${run}@a.test`, role: 'PlatformAdmin' } })).status, 400);
+});
+
+test('Keine Änderungen an der eigenen Rolle oder dem eigenen Status', async () => {
+  const users = await call('GET', `orgs/${state.orgA}/users`, { as: alice });
+  const self = users.body.find(u => u.email === alice.claims[0].val);
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/users/${self.id}`, { as: alice, body: { role: 'OrgUser' } })).status, 403);
+  assert.equal((await call('DELETE', `orgs/${state.orgA}/users/${self.id}`, { as: alice })).status, 403);
+});
+
+test('Der letzte aktive Org Admin bleibt erhalten', async () => {
+  const users = await call('GET', `orgs/${state.orgA}/users`, { as: owner });
+  const self = users.body.find(u => u.email === alice.claims[0].val);
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/users/${self.id}`, { as: owner, body: { status: 'Disabled' } })).status, 409);
+});
+
+test('Deaktivierte Benutzer verlieren sofort ihre Rechte', async () => {
+  const users = await call('GET', `orgs/${state.orgA}/users`, { as: alice });
+  const carolId = users.body.find(u => u.email === carol.claims[0].val).id;
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/users/${carolId}`, { as: alice, body: { role: 'OrgAdmin' } })).status, 200);
+  assert.equal((await call('GET', `orgs/${state.orgA}/users`, { as: carol })).status, 200);
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/users/${carolId}`, { as: alice, body: { status: 'Disabled' } })).status, 200);
+  assert.equal((await call('GET', `orgs/${state.orgA}/users`, { as: carol })).status, 403);
+});
+
+test('Eine Identität gehört genau einer Organisation an', async () => {
+  const invite = await call('POST', `orgs/${state.orgB}/invitations`, { as: bob, body: { email: alice.claims[0].val, role: 'OrgUser' } });
+  const response = await call('POST', 'invitations/accept', { as: alice, body: { token: tokenOf(invite) } });
+  assert.equal(response.status, 409);
+  assert.equal(response.body.code, 'already_member');
+});
+
+test('Zurückgezogene Einladungen sind ungültig', async () => {
+  const invite = await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email: `dave-${run}@a.test` } });
+  assert.equal((await call('DELETE', `orgs/${state.orgA}/invitations/${invite.body.invitation.id}`, { as: alice })).status, 200);
+  const dave = principal('dave', `dave-${run}@a.test`);
+  assert.equal((await call('POST', 'invitations/accept', { as: dave, body: { token: tokenOf(invite) } })).status, 404);
+});
+
+test('Erneut gesendete Einladungen entwerten den alten Link', async () => {
+  const invite = await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email: `erin-${run}@a.test` } });
+  const resent = await call('POST', `orgs/${state.orgA}/invitations/${invite.body.invitation.id}/resend`, { as: alice });
+  assert.equal(resent.status, 200);
+  const erin = principal('erin', `erin-${run}@a.test`);
+  assert.equal((await call('POST', 'invitations/accept', { as: erin, body: { token: tokenOf(invite) } })).status, 404);
+  assert.equal((await call('POST', 'invitations/accept', { as: erin, body: { token: tokenOf(resent) } })).status, 200);
+});
+
+test('Deaktivierte Organisation sperrt ihre Admins', async () => {
+  assert.equal((await call('PATCH', `platform/orgs/${state.orgB}`, { as: owner, body: { status: 'Disabled' } })).status, 200);
+  assert.equal((await call('GET', `orgs/${state.orgB}/users`, { as: bob })).status, 403);
+  assert.equal((await call('PATCH', `platform/orgs/${state.orgB}`, { as: owner, body: { status: 'Active' } })).status, 200);
+});
+
+test('Audit-Log enthält Aktionen und verweigerte Zugriffe der eigenen Organisation', async () => {
+  const log = await call('GET', `orgs/${state.orgA}/audit`, { as: alice });
+  assert.equal(log.status, 200);
+  const actions = log.body.map(entry => entry.action);
+  for (const action of ['organization.created', 'invitation.created', 'invitation.accepted', 'user.role_changed', 'user.disabled', 'invitation.revoked', 'invitation.resent', 'access.denied']) {
+    assert.ok(actions.includes(action), `Audit fehlt: ${action}`);
+  }
+  const denied = log.body.find(entry => entry.action === 'access.denied');
+  assert.equal(denied.result, 'denied');
+});

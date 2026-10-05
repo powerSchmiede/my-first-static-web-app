@@ -1,0 +1,69 @@
+import React, { useState } from 'react';
+import { absoluteLink } from './labels';
+
+export function Badge({ tone = 'neutral', children }) {
+  return <span className={`badge badge-${tone}`}>{children}</span>;
+}
+
+export const STATUS_TONES = {
+  Active: 'green',
+  Disabled: 'gray',
+  Invited: 'blue',
+  Pending: 'blue',
+  Accepted: 'green',
+  Revoked: 'gray',
+  Expired: 'amber',
+  success: 'green',
+  denied: 'red',
+  failed: 'amber',
+};
+
+export function ErrorText({ error }) {
+  if (!error) return null;
+  return <p className="form-error" role="alert">{error}</p>;
+}
+
+// Zeigt den Einladungslink nach dem Einladen oder erneuten Senden.
+export function InviteResult({ result }) {
+  const [copied, setCopied] = useState(false);
+  const link = absoluteLink(result.inviteLink);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="invite-result">
+      {result.emailSent ? (
+        <p className="notice notice-success">Die Einladung wurde per E-Mail an <strong>{result.invitation.email}</strong> gesendet.</p>
+      ) : (
+        <p className="notice notice-warn">
+          Die E-Mail konnte nicht automatisch versendet werden{result.emailStatus === 'not_configured' ? ' (E-Mail-Versand ist noch nicht eingerichtet)' : ''}.
+          Schicke den Link bitte selbst an <strong>{result.invitation.email}</strong>.
+        </p>
+      )}
+      <label className="field">
+        <span>Einladungslink (7 Tage gültig, nur für diese E-Mail-Adresse)</span>
+        <div className="copy-row">
+          <input readOnly value={link} onFocus={e => e.target.select()} />
+          <button type="button" className="btn" onClick={copy}>{copied ? 'Kopiert ✓' : 'Link kopieren'}</button>
+        </div>
+      </label>
+    </div>
+  );
+}
+
+export function StatCard({ label, value, tone = 'neutral', hint }) {
+  return (
+    <div className={`stat-card stat-${tone}`}>
+      <span className="stat-label">{label}</span>
+      <strong className="stat-value">{value}</strong>
+      {hint && <span className="stat-hint">{hint}</span>}
+    </div>
+  );
+}
