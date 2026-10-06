@@ -4,17 +4,19 @@ import { Link } from '../router';
 import { Modal } from '../Admin';
 import { Badge, ErrorText, InviteResult, StatCard, STATUS_TONES } from '../ui';
 import OrganizationApps from './AppAccess';
+import Catalog from './Catalog';
 import { AUDIT_LABELS, INVITATION_STATUS_LABELS, ROLE_LABELS, USER_STATUS_LABELS, formatDate } from '../labels';
 
 const TABS = [
   { key: '', label: 'Übersicht' },
   { key: 'benutzer', label: 'Benutzer' },
   { key: 'einladungen', label: 'Einladungen' },
+  { key: 'katalog', label: 'App-Katalog' },
   { key: 'einstellungen', label: 'Einstellungen' },
 ];
 
-// Nur in der Plattform-Ansicht: App-Freigaben vergibt ausschließlich der Plattform-Admin.
-const PLATFORM_TABS = [...TABS.slice(0, 3), { key: 'apps', label: 'Apps' }, TABS[3]];
+// Nur in der Plattform-Ansicht: KanzleiMind-Apps freischalten darf ausschließlich der Plattform-Admin.
+const PLATFORM_TABS = [...TABS.slice(0, 3), { key: 'freischaltung', label: 'Freischaltung' }, ...TABS.slice(3)];
 
 function InviteDialog({ orgId, onClose, onInvited }) {
   const [email, setEmail] = useState('');
@@ -398,7 +400,8 @@ export default function Organization({ orgId, tab, basePath, me, backLink, platf
       {active.key === '' && <Overview org={org} audit={audit} basePath={basePath} onInvite={handlers.onInvite} />}
       {active.key === 'benutzer' && <Users users={users} invitations={invitations} me={me} busyId={busyId} {...handlers} />}
       {active.key === 'einladungen' && <Invitations invitations={invitations} busyId={busyId} {...handlers} />}
-      {active.key === 'apps' && <OrganizationApps orgId={orgId} onSaved={load} />}
+      {active.key === 'freischaltung' && <OrganizationApps orgId={orgId} onSaved={load} />}
+      {active.key === 'katalog' && <Catalog orgId={orgId} />}
       {active.key === 'einstellungen' && <Settings org={org} onRenamed={load} />}
 
       {dialog && dialog.kind === 'invite' && <InviteDialog orgId={orgId} onClose={() => setDialog(null)} onInvited={load} />}

@@ -66,6 +66,15 @@ function CreateOrganizationDialog({ onClose, onCreated }) {
   );
 }
 
+export function PlatformNav({ active }) {
+  return (
+    <nav className="tabs" aria-label="Plattform">
+      <Link to="/plattform" className={active === 'orgs' ? 'is-active' : ''} aria-current={active === 'orgs' ? 'page' : undefined}>Organisationen</Link>
+      <Link to="/plattform/apps" className={active === 'apps' ? 'is-active' : ''} aria-current={active === 'apps' ? 'page' : undefined}>KanzleiMind-Apps</Link>
+    </nav>
+  );
+}
+
 function DeleteOrganizationDialog({ org, onClose, onDeleted }) {
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
@@ -160,6 +169,7 @@ export default function Platform() {
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>+ Neue Organisation</button>
       </div>
+      <PlatformNav active="orgs" />
 
       <ErrorText error={error} />
 

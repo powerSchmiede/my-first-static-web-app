@@ -35,11 +35,13 @@ app.http('appHtml', {
 // Apps (Kacheln) verwalten dürfen nur Plattform-Admins.
 
 app.http('createApp', {
-  methods: ['POST'],
+  methods: ['GET', 'POST'],
   authLevel: 'anonymous',
   route: 'manage/apps',
   handler: endpoint(async (request, ctx) => {
     requirePlatformAdmin(ctx);
+    // Alle KanzleiMind-Apps, unabhängig von einer eigenen Mitgliedschaft des Plattform-Admins
+    if (request.method === 'GET') return { jsonBody: await store.listApps() };
     const created = await store.createApp(await readJson(request));
     await audit.record(ctx, { action: 'app.created', targetType: 'app', targetId: created.id, details: { title: created.title, type: created.type } });
     return { status: 201, jsonBody: created };

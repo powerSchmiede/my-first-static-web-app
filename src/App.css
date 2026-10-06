@@ -808,10 +808,30 @@ a.tile:focus-visible {
 .app-check-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-check input:focus-visible { outline: 2px solid #3B6FD9; outline-offset: 2px; }
 
+/* Schalter (Sichtbarkeit) */
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 700; color: #5D5D63; white-space: nowrap; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch-track { position: relative; width: 34px; height: 20px; border-radius: 10px; background: #D8D3CF; transition: background .15s; flex: none; }
+.switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0, 0, 0, .2); transition: transform .15s; }
+.switch input:checked + .switch-track { background: #5F67D3; }
+.switch input:checked + .switch-track::after { transform: translateX(14px); }
+.switch input:focus-visible + .switch-track { outline: 2px solid #3B6FD9; outline-offset: 2px; }
+.switch input:disabled + .switch-track { opacity: .5; }
+
+/* Meine Apps */
+.my-apps-head { margin-bottom: 0; }
+.my-apps-head .hint { max-width: 460px; }
+.my-app-row { grid-template-columns: auto 56px minmax(0, 1fr) auto; }
+.my-app-row.is-hidden .tile-art-mini, .my-app-row.is-hidden .manage-info { opacity: .45; }
+.order-btns { display: grid; gap: 2px; }
+.icon-btn-sm { width: 26px; height: 20px; font-size: 12px; line-height: 1; border-radius: 5px; }
+.icon-btn-sm:disabled { opacity: .3; cursor: default; }
+
 .link-btn { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; font-weight: 700; color: #3B6FD9; cursor: pointer; }
 .link-btn:disabled { opacity: .5; cursor: default; }
 
 @media (max-width: 640px) {
+  .my-app-row { grid-template-columns: auto 46px minmax(0, 1fr); }
   .landing { padding: 40px 16px; }
   .landing h1 { font-size: 28px; }
   .topbar { flex-wrap: wrap; }

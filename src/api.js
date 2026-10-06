@@ -33,12 +33,27 @@ const enc = encodeURIComponent;
 
 // Kacheln
 export const fetchApps = () => request('GET', '/api/apps');
-export const createApp = data => request('POST', '/api/manage/apps', data);
+export const fetchAllApps = () => request('GET', '/api/manage/apps');
+export const createApp = data =>request('POST', '/api/manage/apps', data);
 export const updateApp = (id, data) => request('PUT', `/api/manage/apps/${enc(id)}`, data);
 export const deleteApp = id => request('DELETE', `/api/manage/apps/${enc(id)}`);
 
 // Angemeldeter Benutzer (Organisation und Rolle ermittelt der Server)
 export const fetchMe = () => request('GET', '/api/me');
+
+// Persönliche Apps und Einstellungen (immer nur die eigenen)
+export const fetchMyApps = () => request('GET', '/api/me/apps');
+export const saveMyAppSettings = settings => request('PUT', '/api/me/app-settings', settings);
+export const createMyApp = data => request('POST', '/api/me/apps', data);
+export const updateMyApp = (id, data) => request('PUT', `/api/me/apps/${enc(id)}`, data);
+export const deleteMyApp = id => request('DELETE', `/api/me/apps/${enc(id)}`);
+
+// App-Katalog der Organisation (Org-Admins)
+export const getCatalog = orgId => request('GET', `/api/orgs/${enc(orgId)}/catalog`);
+export const setCatalogAppEnabled = (orgId, appId, enabled) => request('PATCH', `/api/orgs/${enc(orgId)}/catalog/${enc(appId)}`, { enabled });
+export const createOrgApp = (orgId, data) => request('POST', `/api/orgs/${enc(orgId)}/apps`, data);
+export const updateOrgApp = (orgId, id, data) => request('PATCH', `/api/orgs/${enc(orgId)}/apps/${enc(id)}`, data);
+export const deleteOrgApp = (orgId, id) => request('DELETE', `/api/orgs/${enc(orgId)}/apps/${enc(id)}`);
 
 // Organisation
 export const getOrganization = orgId => request('GET', `/api/orgs/${enc(orgId)}`);

@@ -97,6 +97,85 @@ app.http('organizationAudit', {
   handler: endpoint(async (request, ctx) => ({ jsonBody: await service.listAudit(ctx, request.params.orgId) })),
 });
 
+// ---------- App-Katalog der Organisation (Org-Admins) ----------
+
+app.http('organizationCatalog', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/catalog',
+  handler: endpoint(async (request, ctx) => ({ jsonBody: await service.getCatalog(ctx, request.params.orgId) })),
+});
+
+// KanzleiMind-App für die Benutzer der Organisation sichtbar/unsichtbar schalten
+app.http('organizationCatalogPlatformApp', {
+  methods: ['PATCH'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/catalog/{appId}',
+  handler: endpoint(async (request, ctx) => {
+    const body = await readJson(request);
+    return { jsonBody: await service.setCatalogAppEnabled(ctx, request.params.orgId, request.params.appId, body.enabled) };
+  }),
+});
+
+app.http('organizationApps', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/apps',
+  handler: endpoint(async (request, ctx) => ({
+    status: 201,
+    jsonBody: await service.createOrgApp(ctx, request.params.orgId, await readJson(request)),
+  })),
+});
+
+app.http('organizationApp', {
+  methods: ['PATCH', 'DELETE'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/apps/{appId}',
+  handler: endpoint(async (request, ctx) => {
+    const { orgId, appId } = request.params;
+    if (request.method === 'PATCH') return { jsonBody: await service.updateOrgApp(ctx, orgId, appId, await readJson(request)) };
+    if (request.method === 'DELETE') {
+      await service.deleteOrgApp(ctx, orgId, appId);
+      return { status: 204 };
+    }
+    return methodNotAllowed();
+  }),
+});
+
+// ---------- Persönliche Apps (jeder Benutzer, nur eigene Daten) ----------
+
+app.http('myApps', {
+  methods: ['GET', 'POST'],
+  authLevel: 'anonymous',
+  route: 'me/apps',
+  handler: endpoint(async (request, ctx) => {
+    if (request.method === 'GET') return { jsonBody: await service.myApps(ctx) };
+    return { status: 201, jsonBody: await service.createMyApp(ctx, await readJson(request)) };
+  }),
+});
+
+app.http('myApp', {
+  methods: ['PUT', 'DELETE'],
+  authLevel: 'anonymous',
+  route: 'me/apps/{appId}',
+  handler: endpoint(async (request, ctx) => {
+    const { appId } = request.params;
+    if (request.method === 'PUT') return { jsonBody: await service.updateMyApp(ctx, appId, await readJson(request)) };
+    if (request.method === 'DELETE') {
+      await service.deleteMyApp(ctx, appId);
+      return { status: 204 };
+    }
+    return methodNotAllowed();
+  }),
+});
+
+app.http('myAppSettings', {
+  methods: ['PUT'],
+  authLevel: 'anonymous',
+  route: 'me/app-settings',
+  handler: endpoint(async (request, ctx) => ({ jsonBody: await service.saveMyAppSettings(ctx, await readJson(request)) })),
+});
+
 // ---------- Plattform ----------
 
 app.http('platformOrganizations', {

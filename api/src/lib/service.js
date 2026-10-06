@@ -7,6 +7,7 @@ const audit = require('./audit');
 const email = require('./email');
 const store = require('./store');
 const appAccess = require('./appAccess');
+const catalog = require('./catalog');
 
 const INVITES_PER_HOUR = 50;
 
@@ -108,6 +109,7 @@ async function removeUser(ctx, organizationId, userId) {
     throw new HttpError(409, 'Die Organisation braucht mindestens einen aktiven Organization Admin.');
   }
   await members.deleteUser(organizationId, userId);
+  await catalog.purgeUser(organizationId, userId);
   await audit.record(ctx, { organizationId, action: 'user.removed', targetType: 'user', targetId: userId, details: { email: user.email, role: user.role } });
 }
 
@@ -293,29 +295,152 @@ async function applyAppGrants(ctx, organization, appIds) {
   return { added, removed };
 }
 
-// Die Organisation stammt aus dem Login-Kontext, nie aus der Anfrage.
-// Ohne aktive Mitgliedschaft gibt es keine Apps.
-async function listVisibleApps(ctx) {
-  requireAuthenticated(ctx);
-  const apps = await store.listApps();
-  if (ctx.isPlatformAdmin) return apps;
-  const membership = ctx.membership;
-  if (!membership || membership.status !== 'Active' || membership.orgStatus !== 'Active') return [];
-  const granted = new Set(await appAccess.listGrantedAppIds(membership.organizationId));
-  return apps.filter(app => granted.has(app.id));
+// Aktive Mitgliedschaft aus dem Login-Kontext. Die Organisation stammt nie aus der Anfrage.
+function activeMembership(ctx) {
+  const m = ctx.membership;
+  return m && m.status === 'Active' && m.orgStatus === 'Active' ? m : null;
 }
 
+function requireMember(ctx) {
+  requireAuthenticated(ctx);
+  if (!ctx.membership) throw new AccessDenied(403, 'Nur für Mitglieder einer Organisation.', { reason: 'no_membership' });
+  authorizeOrg(ctx, ctx.membership.organizationId, 'apps.use');
+  const m = activeMembership(ctx);
+  if (!m) throw new AccessDenied(403, 'Dein Zugang ist deaktiviert.', { reason: 'inactive' });
+  return m;
+}
+
+// Stellt die Apps eines Benutzers zusammen: freigeschaltete und sichtbar geschaltete
+// KanzleiMind-Apps, sichtbare Apps der Organisation und eigene Apps, sortiert nach den
+// persönlichen Einstellungen. Schlüssel: p-<id>, o-<id>, u-<id>.
+async function composeApps(membership, { includeHidden = false } = {}) {
+  const { organizationId, userId } = membership;
+  const [platformApps, grants, orgApps, userApps, prefs] = await Promise.all([
+    store.listApps(),
+    appAccess.listGrants(organizationId),
+    catalog.listOrgApps(organizationId),
+    catalog.listUserApps(organizationId, userId),
+    catalog.getPrefs(organizationId, userId),
+  ]);
+  const visible = new Map(grants.map(g => [g.appId, g.enabled]));
+  const platform = platformApps.filter(app => visible.get(app.id) === true).map(app => ({ ...app, key: `p-${app.id}`, source: 'platform' }));
+  const strip = ({ enabled, ...app }) => app;
+  const candidates = [
+    ...platform.filter(app => app.type !== 'none'),
+    ...orgApps.filter(app => app.enabled).map(app => ({ ...strip(app), key: `o-${app.id}`, source: 'org' })),
+    ...userApps.map(app => ({ ...strip(app), key: `u-${app.id}`, source: 'user' })),
+    ...platform.filter(app => app.type === 'none'),
+  ];
+  const position = new Map(prefs.order.map((key, index) => [key, index]));
+  const ordered = candidates
+    .map((app, index) => ({ app, rank: position.has(app.key) ? position.get(app.key) : prefs.order.length + index }))
+    .sort((a, b) => a.rank - b.rank)
+    .map(entry => entry.app);
+  const hidden = new Set(prefs.hidden);
+  return includeHidden
+    ? ordered.map(app => ({ ...app, hidden: hidden.has(app.key) }))
+    : ordered.filter(app => !hidden.has(app.key));
+}
+
+async function listVisibleApps(ctx) {
+  requireAuthenticated(ctx);
+  const membership = activeMembership(ctx);
+  if (membership) return composeApps(membership);
+  if (ctx.isPlatformAdmin) {
+    return (await store.listApps()).map(app => ({ ...app, key: `p-${app.id}`, source: 'platform' }));
+  }
+  return [];
+}
+
+// HTML-Apps nur bei Freischaltung. Benutzer zusätzlich nur, wenn der Org-Admin die App
+// sichtbar geschaltet hat; Org-Admins dürfen freigeschaltete Apps vorab testen.
 async function readAppHtml(ctx, appId) {
   requireAuthenticated(ctx);
   if (!ctx.isPlatformAdmin) {
     const membership = ctx.membership;
     if (!membership) throw new AccessDenied(404, 'Nicht gefunden.', { reason: 'no_membership', appId });
     authorizeOrg(ctx, membership.organizationId, 'apps.use');
-    if (!(await appAccess.hasGrant(membership.organizationId, appId))) {
+    const grant = await appAccess.getGrant(membership.organizationId, appId);
+    if (!grant || (!grant.enabled && membership.role !== 'OrgAdmin')) {
       throw new AccessDenied(404, 'Nicht gefunden.', { reason: 'app_not_granted', appId });
     }
   }
   return store.readHtml(appId);
+}
+
+// ---------- Persönliche Apps und Einstellungen ----------
+
+async function myApps(ctx) {
+  const membership = requireMember(ctx);
+  return { apps: await composeApps(membership, { includeHidden: true }), maxOwnApps: catalog.MAX_USER_APPS };
+}
+
+async function saveMyAppSettings(ctx, input) {
+  const membership = requireMember(ctx);
+  return catalog.setPrefs(membership.organizationId, membership.userId, input || {});
+}
+
+async function createMyApp(ctx, input) {
+  const membership = requireMember(ctx);
+  return catalog.createUserApp(membership.organizationId, membership.userId, input || {});
+}
+
+async function updateMyApp(ctx, appId, input) {
+  const membership = requireMember(ctx);
+  return catalog.updateUserApp(membership.organizationId, membership.userId, appId, input || {});
+}
+
+async function deleteMyApp(ctx, appId) {
+  const membership = requireMember(ctx);
+  await catalog.deleteUserApp(membership.organizationId, membership.userId, appId);
+}
+
+// ---------- App-Katalog der Organisation ----------
+
+async function getCatalog(ctx, organizationId) {
+  authorizeOrg(ctx, organizationId, 'catalog.manage');
+  await organizations.getOrThrow(organizationId);
+  const [platformApps, grants, orgApps] = await Promise.all([
+    store.listApps(),
+    appAccess.listGrants(organizationId),
+    catalog.listOrgApps(organizationId),
+  ]);
+  const enabled = new Map(grants.map(g => [g.appId, g.enabled]));
+  return {
+    platformApps: platformApps.filter(app => enabled.has(app.id)).map(app => ({ ...app, enabled: enabled.get(app.id) })),
+    orgApps,
+    maxOrgApps: catalog.MAX_ORG_APPS,
+  };
+}
+
+async function setCatalogAppEnabled(ctx, organizationId, appId, enabled) {
+  authorizeOrg(ctx, organizationId, 'catalog.manage');
+  if (typeof enabled !== 'boolean') throw new HttpError(400, 'Ungültige Anfrage.');
+  const grant = await appAccess.setGrantEnabled(organizationId, appId, enabled);
+  const app = (await store.listApps()).find(a => a.id === appId);
+  await audit.record(ctx, { organizationId, action: enabled ? 'catalog.app_enabled' : 'catalog.app_disabled', targetType: 'app', targetId: appId, details: { name: app ? app.title : appId } });
+  return grant;
+}
+
+async function createOrgApp(ctx, organizationId, input) {
+  authorizeOrg(ctx, organizationId, 'catalog.manage');
+  await organizations.getOrThrow(organizationId);
+  const app = await catalog.createOrgApp(organizationId, input || {}, ctx.principal.email || ctx.principal.identityId);
+  await audit.record(ctx, { organizationId, action: 'catalog.org_app_created', targetType: 'app', targetId: app.id, details: { name: app.title } });
+  return app;
+}
+
+async function updateOrgApp(ctx, organizationId, appId, input) {
+  authorizeOrg(ctx, organizationId, 'catalog.manage');
+  const app = await catalog.updateOrgApp(organizationId, appId, input || {});
+  await audit.record(ctx, { organizationId, action: 'catalog.org_app_updated', targetType: 'app', targetId: app.id, details: { name: app.title, enabled: app.enabled } });
+  return app;
+}
+
+async function deleteOrgApp(ctx, organizationId, appId) {
+  authorizeOrg(ctx, organizationId, 'catalog.manage');
+  const app = await catalog.deleteOrgApp(organizationId, appId);
+  await audit.record(ctx, { organizationId, action: 'catalog.org_app_deleted', targetType: 'app', targetId: app.id, details: { name: app.title } });
 }
 
 async function getOrganizationApps(ctx, organizationId) {
@@ -371,6 +496,16 @@ module.exports = {
   listAudit,
   listPlatformAudit,
   listVisibleApps,
+  myApps,
+  saveMyAppSettings,
+  createMyApp,
+  updateMyApp,
+  deleteMyApp,
+  getCatalog,
+  setCatalogAppEnabled,
+  createOrgApp,
+  updateOrgApp,
+  deleteOrgApp,
   readAppHtml,
   getOrganizationApps,
   setOrganizationApps,

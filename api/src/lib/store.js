@@ -239,4 +239,4 @@ async function readHtml(id) {
   return container.getBlockBlobClient(`${id}.html`).downloadToBuffer();
 }
 
-module.exports = { HttpError, listApps, createApp, updateApp, deleteApp, readHtml };
+module.exports = { HttpError, ICONS, BACKGROUNDS, listApps, createApp, updateApp, deleteApp, readHtml };

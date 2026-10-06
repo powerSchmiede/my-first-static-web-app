@@ -48,7 +48,7 @@ export function useAllApps() {
   const [apps, setApps] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
-    api.fetchApps().then(setApps).catch(err => setError(err.message));
+    api.fetchAllApps().then(setApps).catch(err => setError(err.message));
   }, []);
   return { apps, error };
 }
@@ -97,8 +97,8 @@ export default function OrganizationApps({ orgId, onSaved }) {
     <div className="panel stack">
       <div className="panel-head">
         <div>
-          <h3>Freigegebene Apps</h3>
-          <p className="hint">Benutzer dieser Organisation sehen nur die hier ausgewählten Apps. Neue Apps sind zunächst nirgends freigegeben.</p>
+          <h3>Freigeschaltete KanzleiMind-Apps</h3>
+          <p className="hint">Freigeschaltete Apps erscheinen im App-Katalog der Organisation. Sichtbar für Benutzer werden sie erst, wenn ein Organization Admin sie dort freigibt.</p>
         </div>
         <div className="panel-actions">
           {dirty && <button type="button" className="btn" disabled={busy} onClick={() => setSelected(new Set(saved))}>Verwerfen</button>}

@@ -240,8 +240,17 @@ test('Freigaben gelten nur für die eigene Organisation', async () => {
   assert.equal(set.status, 200);
   assert.deepEqual(set.body.appIds, [HTML_APP]);
 
-  assert.deepEqual(appIds(await call('GET', 'apps', { as: alice })), [HTML_APP]);
+  // Freigeschaltet heißt noch nicht sichtbar: Erst der Org-Admin gibt die App für Benutzer frei.
+  const erin = principal('erin', `erin-${run}@a.test`);
+  assert.deepEqual((await call('GET', 'apps', { as: alice })).body, []);
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: erin })).status, 404);
+  // Der Org-Admin darf die freigeschaltete App vorab testen.
   assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: alice })).status, 200);
+
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/catalog/${HTML_APP}`, { as: alice, body: { enabled: true } })).status, 200);
+  assert.deepEqual(appIds(await call('GET', 'apps', { as: alice })), [HTML_APP]);
+  assert.deepEqual(appIds(await call('GET', 'apps', { as: erin })), [HTML_APP]);
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: erin })).status, 200);
 
   // Org B bleibt ohne Zugriff, auch bei direktem Aufruf der Adresse.
   assert.deepEqual((await call('GET', 'apps', { as: bob })).body, []);
@@ -374,4 +383,112 @@ test('Organisation löschen: nur Plattform-Admin, nur deaktiviert, nur mit Namen
 
   const log = await call('GET', 'platform/audit', { as: owner });
   assert.ok(log.body.some(entry => entry.action === 'organization.deleted' && entry.targetId === orgId));
+});
+
+
+// ---------- App-Katalog, Apps der Organisation, eigene Apps ----------
+
+const LINK = { title: 'Wiki', type: 'link', url: 'https://example.com/wiki', icon: 'book', background: 'grid' };
+const keys = response => response.body.map(app => app.key);
+
+test('App-Katalog: nur der Org-Admin der eigenen Organisation', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const own = await call('GET', `orgs/${state.orgA}/catalog`, { as: alice });
+  assert.equal(own.status, 200);
+  assert.ok(own.body.platformApps.some(app => app.id === HTML_APP && app.enabled === true));
+
+  assert.equal((await call('GET', `orgs/${state.orgA}/catalog`, { as: bob })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgA}/catalog`, { as: erin })).status, 403);
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/catalog/${HTML_APP}`, { as: bob, body: { enabled: false } })).status, 404);
+  // Nicht freigeschaltete Apps kann der Org-Admin nicht selbst sichtbar schalten.
+  assert.equal((await call('PATCH', `orgs/${state.orgB}/catalog/${HTML_APP}`, { as: bob, body: { enabled: true } })).status, 404);
+  assert.deepEqual((await call('GET', 'apps', { as: bob })).body, []);
+});
+
+test('Apps der Organisation: nur https-Links, nur eigene Organisation, Sichtbarkeit wirkt', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  for (const url of ['javascript:alert(1)', 'http://example.com', '/api/orgs', 'data:text/html,x', '']) {
+    assert.equal((await call('POST', `orgs/${state.orgA}/apps`, { as: alice, body: { ...LINK, url } })).status, 400, url);
+  }
+  assert.equal((await call('POST', `orgs/${state.orgA}/apps`, { as: erin, body: LINK })).status, 403);
+  assert.equal((await call('POST', `orgs/${state.orgA}/apps`, { as: bob, body: LINK })).status, 404);
+
+  const created = await call('POST', `orgs/${state.orgA}/apps`, { as: alice, body: LINK });
+  assert.equal(created.status, 201);
+  const key = `o-${created.body.id}`;
+  assert.ok(keys(await call('GET', 'apps', { as: erin })).includes(key));
+  assert.ok(!keys(await call('GET', 'apps', { as: bob })).includes(key));
+
+  // Fremde Org-Admins erreichen die App weder über ihre noch über die fremde Organisation.
+  assert.equal((await call('PATCH', `orgs/${state.orgB}/apps/${created.body.id}`, { as: bob, body: { enabled: false } })).status, 404);
+  assert.equal((await call('DELETE', `orgs/${state.orgA}/apps/${created.body.id}`, { as: bob })).status, 404);
+
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/apps/${created.body.id}`, { as: alice, body: { enabled: false } })).status, 200);
+  assert.ok(!keys(await call('GET', 'apps', { as: erin })).includes(key));
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/apps/${created.body.id}`, { as: alice, body: { url: 'javascript:x' } })).status, 400);
+  assert.equal((await call('DELETE', `orgs/${state.orgA}/apps/${created.body.id}`, { as: alice })).status, 204);
+  assert.equal((await call('GET', `orgs/${state.orgA}/catalog`, { as: alice })).body.orgApps.length, 0);
+});
+
+test('Eigene Apps sieht nur der Benutzer selbst', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  assert.equal((await call('POST', 'me/apps', { as: erin, body: { ...LINK, url: 'javascript:alert(1)' } })).status, 400);
+  const mine = await call('POST', 'me/apps', { as: erin, body: { ...LINK, title: 'Meine Notizen' } });
+  assert.equal(mine.status, 201);
+  const key = `u-${mine.body.id}`;
+  assert.ok(keys(await call('GET', 'apps', { as: erin })).includes(key));
+  assert.ok(!keys(await call('GET', 'apps', { as: alice })).includes(key));
+
+  // Andere Benutzer können fremde eigene Apps weder ändern noch löschen.
+  assert.equal((await call('PUT', `me/apps/${mine.body.id}`, { as: alice, body: LINK })).status, 404);
+  assert.equal((await call('DELETE', `me/apps/${mine.body.id}`, { as: bob })).status, 404);
+  assert.equal((await call('PUT', `me/apps/${mine.body.id}`, { as: erin, body: { ...LINK, title: 'Notizen' } })).body.title, 'Notizen');
+
+  // Ohne Organisation keine eigenen Apps (auch nicht als Plattform-Admin).
+  assert.equal((await call('GET', 'me/apps', { as: owner })).status, 403);
+  assert.equal((await call('POST', 'me/apps', { as: mallory, body: LINK })).status, 403);
+  assert.equal((await call('DELETE', `me/apps/${mine.body.id}`, { as: erin })).status, 204);
+});
+
+test('Persönliche Reihenfolge und ausgeblendete Apps', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const first = await call('POST', 'me/apps', { as: erin, body: { ...LINK, title: 'A' } });
+  const second = await call('POST', 'me/apps', { as: erin, body: { ...LINK, title: 'B' } });
+  const a = `u-${first.body.id}`;
+  const b = `u-${second.body.id}`;
+
+  assert.equal((await call('PUT', 'me/app-settings', { as: erin, body: { order: [b, a], hidden: [`p-${HTML_APP}`] } })).status, 200);
+  const visible = keys(await call('GET', 'apps', { as: erin }));
+  assert.ok(!visible.includes(`p-${HTML_APP}`));
+  assert.ok(visible.indexOf(b) < visible.indexOf(a));
+  // Ausgeblendet heißt nicht gesperrt: In den Einstellungen bleibt die App sichtbar.
+  const all = await call('GET', 'me/apps', { as: erin });
+  assert.equal(all.body.apps.find(app => app.key === `p-${HTML_APP}`).hidden, true);
+  // Einstellungen wirken nur für den Benutzer selbst.
+  assert.ok(keys(await call('GET', 'apps', { as: alice })).includes(`p-${HTML_APP}`));
+
+  assert.equal((await call('PUT', 'me/app-settings', { as: erin, body: { order: 'x', hidden: [] } })).status, 400);
+  assert.equal((await call('PUT', 'me/app-settings', { as: erin, body: { order: [], hidden: [] } })).status, 200);
+});
+
+test('Höchstzahl eigener Apps', async () => {
+  const kim = principal('kim', `kim-${run}@a.test`);
+  const invite = await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email: kim.userDetails, role: 'OrgUser' } });
+  assert.equal((await call('POST', 'invitations/accept', { as: kim, body: { token: tokenOf(invite) } })).status, 200);
+  for (let i = 0; i < 30; i++) {
+    assert.equal((await call('POST', 'me/apps', { as: kim, body: { ...LINK, title: `App ${i}` } })).status, 201);
+  }
+  assert.equal((await call('POST', 'me/apps', { as: kim, body: LINK })).status, 409);
+
+  // Beim Entfernen des Benutzers verschwinden auch seine eigenen Apps und Einstellungen.
+  await call('PUT', 'me/app-settings', { as: kim, body: { order: [], hidden: ['p-x'] } });
+  const kimId = (await call('GET', 'me', { as: kim })).body.membership.userId;
+  assert.equal((await call('DELETE', `orgs/${state.orgA}/users/${kimId}`, { as: alice })).status, 204);
+  const { table } = require('../src/lib/tables');
+  const orgData = await table('orgData');
+  const leftovers = [];
+  for await (const entity of orgData.listEntities({ queryOptions: { filter: `PartitionKey eq '${state.orgA}'` } })) {
+    if (entity.rowKey.includes(kimId)) leftovers.push(entity.rowKey);
+  }
+  assert.deepEqual(leftovers, []);
 });

@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import logo from './assets/kanzleimind-logo.png';
 import Tile from './Tile';
-import { Modal, AppForm, ManageList } from './Admin';
 import { fetchApps, fetchMe, LOGIN_URL, LOGOUT_URL, PROVIDERS } from './api';
 import { MicrosoftIcon } from './ui';
 import { Link, usePath } from './router';
 import Organization from './pages/Organization';
 import Platform from './pages/Platform';
 import Invitation from './pages/Invitation';
+import PlatformApps from './pages/PlatformApps';
+import MyAppsDialog from './pages/MyApps';
 
 function GearIcon() {
   return (
@@ -33,11 +34,12 @@ function isOrgAdmin(me) {
   return !!m && m.role === 'OrgAdmin' && m.status === 'Active' && m.orgStatus === 'Active';
 }
 
-function Home({ isPlatformAdmin }) {
+// Mitglieder sehen ihre Apps in ihrer persönlichen Reihenfolge und verwalten sie über
+// das Zahnrad. Plattform-Admins ohne Organisation sehen alle KanzleiMind-Apps.
+function Home({ canPersonalize, isPlatformAdmin }) {
   const [apps, setApps] = useState(null);
   const [loadError, setLoadError] = useState('');
-  // { kind: 'create' } | { kind: 'manage' } | { kind: 'edit', app }
-  const [dialog, setDialog] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -51,21 +53,18 @@ function Home({ isPlatformAdmin }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const closeDialog = () => setDialog(null);
-
-  async function afterSave(fromManage) {
-    await load();
-    setDialog(fromManage ? { kind: 'manage' } : null);
-  }
+  const shown = apps && (canPersonalize ? apps : sortForDisplay(apps));
 
   return (
     <>
-      {isPlatformAdmin && (
+      {(canPersonalize || isPlatformAdmin) && (
         <div className="home-actions">
-          <button type="button" className="btn btn-primary" onClick={() => setDialog({ kind: 'create' })}>+ Neue App</button>
-          <button type="button" className="icon-btn" onClick={() => setDialog({ kind: 'manage' })} aria-label="Apps verwalten" title="Apps verwalten">
-            <GearIcon />
-          </button>
+          {!canPersonalize && isPlatformAdmin && <Link className="btn" to="/plattform/apps">KanzleiMind-Apps verwalten</Link>}
+          {canPersonalize && (
+            <button type="button" className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Meine Apps verwalten" title="Meine Apps verwalten">
+              <GearIcon />
+            </button>
+          )}
         </div>
       )}
 
@@ -75,30 +74,20 @@ function Home({ isPlatformAdmin }) {
         <div className="page page-narrow">
           <div className="panel stack">
             <h1>Noch keine Apps</h1>
-            <p className="hint">{isPlatformAdmin ? 'Lege über „+ Neue App“ die erste App an.' : 'Für deine Organisation sind noch keine Apps freigegeben. Wende dich an deinen Administrator.'}</p>
+            <p className="hint">
+              {isPlatformAdmin && !canPersonalize
+                ? 'Lege unter Plattform → KanzleiMind-Apps die erste App an.'
+                : 'Für dich sind noch keine Apps sichtbar. Über das Zahnrad kannst du eigene Links anlegen oder ausgeblendete Apps wieder einblenden.'}
+            </p>
           </div>
         </div>
       )}
 
       <main className="tiles" aria-busy={apps === null}>
-        {apps && sortForDisplay(apps).map(app => <Tile key={app.id} app={app} />)}
+        {shown && shown.map(app => <Tile key={app.key || app.id} app={app} uid={`tile-${app.key || app.id}`} />)}
       </main>
 
-      {dialog && dialog.kind === 'create' && (
-        <Modal title="Neue App anlegen" onClose={closeDialog}>
-          <AppForm onSaved={() => afterSave(false)} onCancel={closeDialog} />
-        </Modal>
-      )}
-      {dialog && dialog.kind === 'manage' && (
-        <Modal title="Apps verwalten" onClose={closeDialog}>
-          <ManageList apps={apps || []} onEdit={app => setDialog({ kind: 'edit', app })} onChanged={load} />
-        </Modal>
-      )}
-      {dialog && dialog.kind === 'edit' && (
-        <Modal title={`„${dialog.app.title}“ bearbeiten`} onClose={() => setDialog({ kind: 'manage' })}>
-          <AppForm app={dialog.app} onSaved={() => afterSave(true)} onCancel={() => setDialog({ kind: 'manage' })} />
-        </Modal>
-      )}
+      {settingsOpen && <MyAppsDialog onClose={() => setSettingsOpen(false)} onChanged={load} />}
     </>
   );
 }
@@ -199,12 +188,13 @@ function App() {
   } else if (segments[0] === 'plattform') {
     section = 'platform';
     if (!platformAdmin) page = <Notice title="Kein Zugriff"><p>Dieser Bereich ist der Plattform-Verwaltung vorbehalten.</p></Notice>;
+    else if (segments[1] === 'apps') page = <PlatformApps />;
     else if (segments[1] === 'org' && segments[2]) {
       const base = `/plattform/org/${encodeURIComponent(segments[2])}`;
       page = <Organization key={segments[2]} orgId={segments[2]} tab={segments[3]} basePath={base} me={me} platformView backLink={<Link to="/plattform" className="back-link">← Alle Organisationen</Link>} />;
     } else page = <Platform />;
   } else {
-    page = <Home isPlatformAdmin={platformAdmin} />;
+    page = <Home isPlatformAdmin={platformAdmin} canPersonalize={!!membership && !blocked} />;
   }
 
   return (

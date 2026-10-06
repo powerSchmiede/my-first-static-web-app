@@ -62,10 +62,15 @@ function Picker({ legend, name, value, onChange, options, renderSwatch }) {
   );
 }
 
-export function AppForm({ app, onSaved, onCancel }) {
+const ALL_TYPES = ['html', 'link', 'none'];
+const savePlatformApp = (app, data) => (app ? updateApp(app.id, data) : createApp(data));
+
+// types: erlaubte Arten. Org-Admins und Benutzer dürfen nur Links anlegen.
+// save(app, data): speichert neu (app = null) oder geändert.
+export function AppForm({ app, onSaved, onCancel, types = ALL_TYPES, save = savePlatformApp, urlHint }) {
   const editing = !!app;
   const [title, setTitle] = useState(editing ? app.title : '');
-  const [type, setType] = useState(editing ? app.type : 'html');
+  const [type, setType] = useState(editing && types.includes(app.type) ? app.type : types[0]);
   const [url, setUrl] = useState(editing && app.type === 'link' ? app.url : '');
   const [icon, setIcon] = useState(editing ? app.icon : DEFAULT_ICON);
   const [background, setBackground] = useState(editing ? app.background : DEFAULT_BACKGROUND);
@@ -87,7 +92,7 @@ export function AppForm({ app, onSaved, onCancel }) {
     try {
       const data = { title: title.trim(), type, url: url.trim(), icon, background };
       if (type === 'html' && file) data.html = await file.text();
-      const saved = editing ? await updateApp(app.id, data) : await createApp(data);
+      const saved = await save(editing ? app : null, data);
       onSaved(saved);
     } catch (err) {
       setError(err.message);
@@ -103,17 +108,17 @@ export function AppForm({ app, onSaved, onCancel }) {
           <input value={title} onChange={e => setTitle(e.target.value)} maxLength={60} placeholder="z. B. KI-Bild-Check" required />
         </label>
 
-        <fieldset className="field">
+        {types.length > 1 && <fieldset className="field">
           <legend>Art der App</legend>
           <div className="segmented">
-            {Object.entries(TYPE_LABELS).map(([key, label]) => (
+            {Object.entries(TYPE_LABELS).filter(([key]) => types.includes(key)).map(([key, label]) => (
               <label key={key}>
                 <input type="radio" name="type" value={key} checked={type === key} onChange={() => setType(key)} />
                 <span>{label}</span>
               </label>
             ))}
           </div>
-        </fieldset>
+        </fieldset>}
 
         {type === 'html' && (
           <label className="field">
@@ -131,7 +136,7 @@ export function AppForm({ app, onSaved, onCancel }) {
           <label className="field">
             <span>Adresse</span>
             <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://…" />
-            <small>Externe Adressen und SharePoint-Seiten öffnen sich in einem neuen Tab.</small>
+            <small>{urlHint || 'Externe Adressen und SharePoint-Seiten öffnen sich in einem neuen Tab.'}</small>
           </label>
         )}
 
@@ -177,16 +182,16 @@ export function AppForm({ app, onSaved, onCancel }) {
   );
 }
 
-export function ManageList({ apps, onEdit, onChanged }) {
+export function ManageList({ apps, onEdit, onChanged, remove = deleteApp, extra, emptyText = 'Es sind noch keine Apps angelegt.' }) {
   const [confirmId, setConfirmId] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
 
-  async function remove(id) {
+  async function handleRemove(id) {
     setBusyId(id);
     setError('');
     try {
-      await deleteApp(id);
+      await remove(id);
       setConfirmId(null);
       await onChanged();
     } catch (err) {
@@ -196,7 +201,7 @@ export function ManageList({ apps, onEdit, onChanged }) {
     }
   }
 
-  if (!apps.length) return <p className="hint">Es sind noch keine Apps angelegt.</p>;
+  if (!apps.length) return <p className="hint">{emptyText}</p>;
 
   return (
     <>
@@ -213,13 +218,14 @@ export function ManageList({ apps, onEdit, onChanged }) {
               {confirmId === app.id ? (
                 <>
                   <span className="confirm-text">Wirklich löschen?</span>
-                  <button type="button" className="btn btn-danger" onClick={() => remove(app.id)} disabled={busyId === app.id}>
+                  <button type="button" className="btn btn-danger" onClick={() => handleRemove(app.id)} disabled={busyId === app.id}>
                     {busyId === app.id ? 'Löschen …' : 'Ja, löschen'}
                   </button>
                   <button type="button" className="btn" onClick={() => setConfirmId(null)} disabled={busyId === app.id}>Nein</button>
                 </>
               ) : (
                 <>
+                  {extra && extra(app)}
                   <button type="button" className="btn" onClick={() => onEdit(app)}>Bearbeiten</button>
                   <button type="button" className="btn" onClick={() => setConfirmId(app.id)}>Löschen</button>
                 </>

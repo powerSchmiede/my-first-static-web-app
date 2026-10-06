@@ -9,6 +9,10 @@
             "allowedRoles": ["authenticated"]
         },
         {
+            "route": "/api/me/*",
+            "allowedRoles": ["authenticated"]
+        },
+        {
             "route": "/api/manage/*",
             "allowedRoles": ["authenticated"]
         },
