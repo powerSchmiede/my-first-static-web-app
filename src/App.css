@@ -775,6 +775,11 @@ a.tile:focus-visible {
 .landing-points li { display: flex; gap: 10px; }
 .landing-points li::before { content: '✓'; color: #5F67D3; font-weight: 800; }
 .landing-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.login-options { display: grid; gap: 10px; max-width: 360px; }
+.login-options .btn { justify-content: center; gap: 10px; }
+.btn-microsoft { border-color: #8C8C8C; }
+.landing .hint a, .invitation-card .hint a { color: #5F67D3; font-weight: 700; }
 .btn-lg { padding: 12px 22px; font-size: 15px; }
 
 /* App-Freigaben */

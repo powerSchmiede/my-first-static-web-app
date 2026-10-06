@@ -44,13 +44,44 @@
     "auth": {
         "identityProviders": {
             "azureActiveDirectory": {
+                "userDetailsClaim": "preferred_username",
                 "registration": {
-                    "openIdIssuer": "https://kanzleimind.ciamlogin.com/55d6bdad-d303-4e5a-bbe1-fb96d7664394/v2.0",
-                    "clientIdSettingName": "AAD_CLIENT_ID",
-                    "clientSecretSettingName": "AAD_CLIENT_SECRET"
+                    "openIdIssuer": "https://login.microsoftonline.com/common/v2.0",
+                    "clientIdSettingName": "M365_CLIENT_ID",
+                    "clientSecretSettingName": "M365_CLIENT_SECRET"
+                }
+            },
+            "customOpenIdConnectProviders": {
+                "kanzleimind": {
+                    "registration": {
+                        "clientIdSettingName": "AAD_CLIENT_ID",
+                        "clientCredential": {
+                            "clientSecretSettingName": "AAD_CLIENT_SECRET"
+                        },
+                        "openIdConnectConfiguration": {
+                            "wellKnownOpenIdConfiguration": "https://kanzleimind.ciamlogin.com/55d6bdad-d303-4e5a-bbe1-fb96d7664394/v2.0/.well-known/openid-configuration"
+                        }
+                    },
+                    "login": {
+                        "nameClaimType": "email",
+                        "scopes": ["openid", "profile", "email"]
+                    }
                 },
-                "login": {
-                    "loginParameters": ["scope=openid profile email"]
+                "kanzleimindsignup": {
+                    "registration": {
+                        "clientIdSettingName": "AAD_CLIENT_ID",
+                        "clientCredential": {
+                            "clientSecretSettingName": "AAD_CLIENT_SECRET"
+                        },
+                        "openIdConnectConfiguration": {
+                            "wellKnownOpenIdConfiguration": "https://kanzleimind.ciamlogin.com/55d6bdad-d303-4e5a-bbe1-fb96d7664394/v2.0/.well-known/openid-configuration"
+                        }
+                    },
+                    "login": {
+                        "nameClaimType": "email",
+                        "scopes": ["openid", "profile", "email"],
+                        "loginParameterNames": ["prompt=create"]
+                    }
                 }
             }
         }

@@ -64,5 +64,13 @@ export const setOrganizationApps = (orgId, appIds) => request('PUT', `/api/platf
 export const previewInvitation = token => request('POST', '/api/invitations/preview', { token });
 export const acceptInvitation = token => request('POST', '/api/invitations/accept', { token });
 
-export const LOGIN_URL = (redirect = '/') => `/.auth/login/aad?post_login_redirect_uri=${enc(redirect)}`;
+// Anbieternamen aus staticwebapp.config.json
+export const PROVIDERS = {
+  email: 'kanzleimind', // KanzleiMind-Konto anmelden
+  signup: 'kanzleimindsignup', // KanzleiMind-Konto erstellen (öffnet direkt die Registrierung)
+  microsoft: 'aad', // Microsoft-365-Konto der Kanzlei
+};
+
+export const LOGIN_URL = (redirect = '/', provider = PROVIDERS.email) =>
+  `/.auth/login/${provider}?post_login_redirect_uri=${enc(redirect)}`;
 export const LOGOUT_URL = '/.auth/logout?post_logout_redirect_uri=/';

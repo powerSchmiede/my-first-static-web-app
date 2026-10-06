@@ -3,7 +3,8 @@ import './App.css';
 import logo from './assets/kanzleimind-logo.png';
 import Tile from './Tile';
 import { Modal, AppForm, ManageList } from './Admin';
-import { fetchApps, fetchMe, LOGIN_URL, LOGOUT_URL } from './api';
+import { fetchApps, fetchMe, LOGIN_URL, LOGOUT_URL, PROVIDERS } from './api';
+import { MicrosoftIcon } from './ui';
 import { Link, usePath } from './router';
 import Organization from './pages/Organization';
 import Platform from './pages/Platform';
@@ -127,13 +128,16 @@ function Landing() {
         <ul className="landing-points">
           <li>Alle freigegebenen Apps auf einer Startseite</li>
           <li>Zugang nur auf Einladung deiner Organisation</li>
-          <li>Anmeldung per E-Mail-Code, ohne Passwort</li>
+          <li>Anmeldung mit Microsoft 365 oder KanzleiMind-Konto</li>
         </ul>
-        <div className="landing-actions">
-          <a className="btn btn-primary btn-lg" href={LOGIN_URL('/')}>Anmelden</a>
-          <a className="btn btn-lg" href={LOGIN_URL('/')}>Konto erstellen</a>
+        <div className="login-options">
+          <a className="btn btn-lg btn-microsoft" href={LOGIN_URL('/', PROVIDERS.microsoft)}><MicrosoftIcon /> Mit Microsoft 365 anmelden</a>
+          <a className="btn btn-primary btn-lg" href={LOGIN_URL('/', PROVIDERS.email)}>Mit KanzleiMind-Konto anmelden</a>
         </div>
-        <p className="hint">Neu hier? Wähle auf der nächsten Seite „Konto erstellen“ bzw. „Kein Konto?“ und nutze die E-Mail-Adresse, an die deine Einladung ging.</p>
+        <p className="hint">
+          Noch kein Konto? Am einfachsten öffnest du den Einladungslink aus deiner E-Mail.
+          Oder <a href={LOGIN_URL('/', PROVIDERS.signup)}>KanzleiMind-Konto erstellen</a>.
+        </p>
       </div>
     </main>
   );
@@ -227,7 +231,7 @@ function App() {
               <a className="btn" href={LOGOUT_URL}>Abmelden</a>
             </>
           ) : me ? (
-            <a className="btn" href={LOGIN_URL(path)}>Anmelden</a>
+            section === 'landing' ? null : <a className="btn" href={LOGIN_URL(path)}>Anmelden</a>
           ) : null}
         </div>
       </header>

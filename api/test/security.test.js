@@ -18,7 +18,7 @@ functions.app.http = (name, options) => routes.push({ name, ...options });
 require('../src/functions/organizations');
 require('../src/functions/apps');
 
-function principal(name, email, provider = 'aad') {
+function principal(name, email, provider = 'kanzleimind') {
   return { identityProvider: provider, userId: `${name}-${run}`, userDetails: email, userRoles: ['anonymous', 'authenticated'], claims: [{ typ: 'email', val: email }, { typ: 'name', val: name }] };
 }
 
@@ -285,4 +285,56 @@ test('Gelöschte Apps verlieren alle Freigaben', async () => {
   await call('PUT', `platform/orgs/${state.orgA}/apps`, { as: owner, body: { appIds: [HTML_APP, app.body.id] } });
   assert.equal((await call('DELETE', `manage/apps/${app.body.id}`, { as: owner })).status, 204);
   assert.deepEqual((await call('GET', `platform/orgs/${state.orgA}/apps`, { as: owner })).body.appIds, [HTML_APP]);
+});
+
+
+// ---------- Anmeldewege ----------
+
+test('Registrieren und Anmelden führen zum selben KanzleiMind-Konto', async () => {
+  const email = `frank-${run}@a.test`;
+  const invite = await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email, role: 'OrgUser' } });
+  const viaSignup = principal('frank', email, 'kanzleimindsignup');
+  assert.equal((await call('POST', 'invitations/accept', { as: viaSignup, body: { token: tokenOf(invite) } })).status, 200);
+
+  const viaSignin = { ...principal('frank', email, 'kanzleimind'), userId: 'anderer-swa-user' };
+  const me = await call('GET', 'me', { as: viaSignin });
+  assert.equal(me.body.membership.organizationId, state.orgA);
+});
+
+test('Microsoft-365-Konto ist eine eigene Identität mit dem Anmeldenamen als E-Mail', async () => {
+  const email = `gina-${run}@a.test`;
+  const invite = await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email, role: 'OrgUser' } });
+  const m365 = principal('gina', email, 'aad');
+  assert.equal((await call('POST', 'invitations/accept', { as: m365, body: { token: tokenOf(invite) } })).status, 200);
+  assert.equal((await call('GET', 'me', { as: m365 })).body.membership.organizationId, state.orgA);
+
+  // Gleiche Adresse über ein KanzleiMind-Konto ist nicht automatisch dasselbe Konto.
+  assert.equal((await call('GET', 'me', { as: principal('gina', email) })).body.membership, null);
+});
+
+test('Gastkonten, unbekannte Anbieter und Konten ohne E-Mail gelten als nicht angemeldet', async () => {
+  const guest = principal('guest', `alice-${run}_a.test#EXT#@evil.onmicrosoft.com`, 'aad');
+  assert.equal((await call('GET', `orgs/${state.orgA}/users`, { as: guest })).status, 401);
+  assert.equal((await call('GET', 'apps', { as: principal('x', alice.userDetails, 'twitter') })).status, 401);
+  assert.equal((await call('GET', 'apps', { as: principal('x', 'kein-name') })).status, 401);
+});
+
+test('Alte KanzleiMind-Konten werden auf den neuen Schlüssel umgestellt', async () => {
+  const { table } = require('../src/lib/tables');
+  const { migrateLegacyIdentities } = require('../src/lib/context');
+  const email = `legacy-${run}@a.test`;
+  const adminEmail = `legacy-admin-${run}@platform.test`;
+  const userId = `legacy-${run}`;
+  const orgData = await table('orgData');
+  await orgData.createEntity({ partitionKey: state.orgA, rowKey: `user_${userId}`, identityId: `aad|old-${run}`, email, displayName: 'Legacy', role: 'OrgUser', status: 'Active', createdAt: new Date().toISOString() });
+  await (await table('identities')).createEntity({ partitionKey: `aad|old-${run}`, rowKey: 'membership', organizationId: state.orgA, userId });
+  await (await table('platformAdmins')).createEntity({ partitionKey: `aad|old-admin-${run}`, rowKey: 'platform', email: adminEmail, createdAt: new Date().toISOString() });
+
+  await migrateLegacyIdentities();
+
+  const me = await call('GET', 'me', { as: principal('legacy', email) });
+  assert.equal(me.body.membership.userId, userId);
+  assert.equal((await call('GET', 'me', { as: principal('legacy-admin', adminEmail) })).body.isPlatformAdmin, true);
+  // Der alte Schlüssel gilt jetzt als Microsoft-365-Identität und hat keinen Zugriff mehr.
+  assert.equal((await call('GET', 'me', { as: { ...principal('legacy', email, 'aad'), userId: `old-${run}` } })).body.membership, null);
 });

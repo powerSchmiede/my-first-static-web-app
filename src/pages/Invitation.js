@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import * as api from '../api';
 import { Link, navigate } from '../router';
 import { ROLE_LABELS, formatDate } from '../labels';
+import { MicrosoftIcon } from '../ui';
 
 const STORAGE_KEY = 'pendingInvitationToken';
 
@@ -74,10 +75,17 @@ export default function Invitation({ me, onAccepted }) {
                 {preview.status === 'Expired' ? 'Diese Einladung ist abgelaufen. Bitte deinen Administrator um eine neue Einladung.' : 'Diese Einladung ist nicht mehr gültig.'}
               </p>
             ) : !signedIn ? (
-              <>
-                <p className="hint">Melde dich mit deinem Microsoft-Konto <strong>{preview.email}</strong> an, um die Einladung anzunehmen.</p>
-                <div className="form-actions"><a className="btn btn-primary" href={api.LOGIN_URL('/einladung')}>Anmelden & annehmen</a></div>
-              </>
+              <div className="stack">
+                <p className="hint">Wähle, wie du dich mit <strong>{preview.email}</strong> künftig anmelden möchtest:</p>
+                <div className="login-options">
+                  <a className="btn btn-lg btn-microsoft" href={api.LOGIN_URL('/einladung', api.PROVIDERS.microsoft)}><MicrosoftIcon /> Mit Microsoft 365 annehmen</a>
+                  <a className="btn btn-primary btn-lg" href={api.LOGIN_URL('/einladung', api.PROVIDERS.signup)}>KanzleiMind-Konto erstellen & annehmen</a>
+                </div>
+                <p className="hint">
+                  Microsoft 365: wenn deine Kanzlei Microsoft 365 nutzt und dies dein Anmeldename ist – ohne neues Passwort.
+                  {' '}Schon ein KanzleiMind-Konto? <a href={api.LOGIN_URL('/einladung', api.PROVIDERS.email)}>Anmelden & annehmen</a>
+                </p>
+              </div>
             ) : emailMismatch ? (
               <>
                 <p className="notice notice-warn">
