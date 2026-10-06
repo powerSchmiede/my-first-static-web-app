@@ -148,7 +148,7 @@ function App() {
   return (
     <>
       <header className="topbar">
-        <Link to="/" className="topbar-title">GKK Apps</Link>
+        <Link to="/" className="topbar-title">KanzleiMind Apps</Link>
         <nav className="topbar-nav" aria-label="Hauptnavigation">
           {signedIn && (orgAdmin || platformAdmin) && <Link to="/" className={section === 'apps' ? 'is-active' : ''}>Apps</Link>}
           {orgAdmin && <Link to="/organisation" className={section === 'org' ? 'is-active' : ''}>Meine Organisation</Link>}

@@ -16,13 +16,13 @@ const MAX_HTML_BYTES = 10 * 1024 * 1024;
 const DEFAULT_APPS = [
   { id: 'support-apps', title: 'Support Apps', type: 'none', icon: 'headset', background: 'rings' },
   { id: 'marketingvorlagen', title: 'Marketingvorlagen', type: 'none', icon: 'layout', background: 'grid' },
-  { id: 'gkk-ai-land', title: 'GKK AI-Land', type: 'none', icon: 'sparkle', background: 'network' },
+  { id: 'gkk-ai-land', title: 'KanzleiMind AI-Land', type: 'none', icon: 'sparkle', background: 'network' },
   { id: 'levelup', title: 'LevelUP', type: 'none', icon: 'chart', background: 'bars' },
   { id: 'onboarding', title: 'Onboarding', type: 'none', icon: 'presentation', background: 'path' },
   { id: 'translation-services', title: 'Translation Services', type: 'none', icon: 'translate', background: 'letters' },
   { id: 'copilot-chat', title: 'Copilot Chat', type: 'none', icon: 'chat', background: 'aurora' },
   { id: 'otto-schmidt-answers', title: 'Otto Schmidt Answers', type: 'none', icon: 'document', background: 'lines' },
-  { id: 'gkk-team', title: 'GKK Team', type: 'none', icon: 'team', background: 'star' },
+  { id: 'gkk-team', title: 'KanzleiMind Team', type: 'none', icon: 'team', background: 'star' },
   { id: 'schweitzer', title: 'Schweitzer', type: 'none', icon: 'book', background: 'city' },
   { id: 'ki-bild-check', title: 'KI-Bild-Check', type: 'link', url: '/tools/ki-bild-check/index.html', icon: 'image', background: 'squares' },
 ];

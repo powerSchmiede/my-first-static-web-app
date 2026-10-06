@@ -1,5 +1,5 @@
 {
-  "name": "gkk-apps-api",
+  "name": "kanzleimind-apps-api",
   "version": "1.0.0",
   "private": true,
   "main": "src/functions/*.js",
