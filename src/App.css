@@ -465,7 +465,11 @@ a.tile:focus-visible {
 }
 
 /* Navigation */
-.topbar-title { color: inherit; text-decoration: none; }
+.topbar-title { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+.topbar-logo { display: block; height: 30px; width: auto; }
+.topbar-suffix { font-size: 15px; font-weight: 700; color: #6E6E74; padding-top: 2px; }
+
+.landing-logo { display: block; width: 280px; max-width: 80%; height: auto; margin-bottom: 8px; }
 
 .topbar-nav {
   display: flex;
@@ -768,7 +772,8 @@ a.tile:focus-visible {
   font-weight: 600;
 }
 
-.landing-points li::before { content: '✓'; color: #7B2D8E; font-weight: 800; margin-right: 10px; }
+.landing-points li { display: flex; gap: 10px; }
+.landing-points li::before { content: '✓'; color: #5F67D3; font-weight: 800; }
 .landing-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .btn-lg { padding: 12px 22px; font-size: 15px; }
 

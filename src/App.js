@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import './App.css';
+import logo from './assets/kanzleimind-logo.png';
 import Tile from './Tile';
 import { Modal, AppForm, ManageList } from './Admin';
 import { fetchApps, fetchMe, LOGIN_URL, LOGOUT_URL } from './api';
@@ -117,7 +118,7 @@ function Landing() {
   return (
     <main className="landing">
       <div className="landing-card">
-        <p className="eyebrow">KanzleiMind</p>
+        <img className="landing-logo" src={logo} alt="KanzleiMind" width="986" height="207" />
         <h1>Die digitalen Werkzeuge deiner Kanzlei an einem Ort.</h1>
         <p className="landing-lead">
           KanzleiMind bündelt KI-Anwendungen und Tools für den Kanzleialltag – sicher getrennt pro Organisation
@@ -168,7 +169,7 @@ function App() {
     section = '';
     page = me ? <Invitation me={me} onAccepted={loadMe} /> : null;
   } else if (!signedIn) {
-    section = '';
+    section = 'landing';
     page = <Landing />;
   } else if (!platformAdmin && !membership) {
     section = '';
@@ -205,7 +206,12 @@ function App() {
   return (
     <>
       <header className="topbar">
-        <Link to="/" className="topbar-title">KanzleiMind Apps</Link>
+        {section === 'landing' ? <span /> : (
+          <Link to="/" className="topbar-title" aria-label="KanzleiMind Apps – Startseite">
+            <img className="topbar-logo" src={logo} alt="" width="986" height="207" />
+            <span className="topbar-suffix">Apps</span>
+          </Link>
+        )}
         <nav className="topbar-nav" aria-label="Hauptnavigation">
           {signedIn && (orgAdmin || platformAdmin) && <Link to="/" className={section === 'apps' ? 'is-active' : ''}>Apps</Link>}
           {orgAdmin && <Link to="/organisation" className={section === 'org' ? 'is-active' : ''}>Meine Organisation</Link>}
