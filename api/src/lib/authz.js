@@ -14,6 +14,7 @@ const PERMISSIONS = {
   'users.manage': ['OrgAdmin'],
   'invitations.manage': ['OrgAdmin'],
   'audit.read': ['OrgAdmin'],
+  'apps.use': ['OrgAdmin', 'OrgUser'],
 };
 
 function isValidRole(role) {

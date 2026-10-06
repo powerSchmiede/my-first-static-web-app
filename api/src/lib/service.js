@@ -5,6 +5,8 @@ const organizations = require('./organizations');
 const members = require('./members');
 const audit = require('./audit');
 const email = require('./email');
+const store = require('./store');
+const appAccess = require('./appAccess');
 
 const INVITES_PER_HOUR = 50;
 
@@ -213,12 +215,14 @@ async function listOrganizations(ctx) {
 async function createOrganization(ctx, input) {
   requirePlatformAdmin(ctx);
   const adminEmail = requireEmail(input.adminEmail);
+  const appIds = input.appIds === undefined ? [] : await validAppIds(input.appIds);
   const organization = await organizations.create(input.name, ctx.principal.email || ctx.principal.identityId);
   await audit.record(ctx, { organizationId: organization.id, action: 'organization.created', targetType: 'organization', targetId: organization.id, details: { name: organization.name } });
   await audit.record(ctx, { action: 'organization.created', targetType: 'organization', targetId: organization.id, details: { name: organization.name } });
   const { invitation, token } = await members.createInvitation(organization.id, { email: adminEmail, role: 'OrgAdmin', invitedBy: ctx.principal.email || ctx.principal.identityId });
   const result = await deliver(ctx, organization, invitation, token);
   await audit.record(ctx, { organizationId: organization.id, action: 'invitation.created', targetType: 'invitation', targetId: invitation.id, details: { email: adminEmail, role: 'OrgAdmin', emailSent: result.emailSent } });
+  if (appIds.length) await applyAppGrants(ctx, organization, appIds);
   return { organization, ...result };
 }
 
@@ -240,6 +244,76 @@ async function listAudit(ctx, organizationId) {
 async function listPlatformAudit(ctx) {
   requirePlatformAdmin(ctx);
   return audit.list(audit.PLATFORM_PARTITION);
+}
+
+// ---------- Apps und Freigaben ----------
+
+// Prüft, dass alle IDs zu existierenden Apps gehören. Liefert die Liste ohne Duplikate.
+async function validAppIds(value) {
+  if (!Array.isArray(value) || value.length > 500 || value.some(id => typeof id !== 'string')) {
+    throw new HttpError(400, 'Ungültige App-Auswahl.');
+  }
+  const known = new Set((await store.listApps()).map(app => app.id));
+  const unique = [...new Set(value)];
+  if (unique.some(id => !known.has(id))) throw new HttpError(400, 'Mindestens eine ausgewählte App gibt es nicht mehr.');
+  return unique;
+}
+
+async function applyAppGrants(ctx, organization, appIds) {
+  const { added, removed } = await appAccess.setGrantedAppIds(organization.id, appIds, ctx.principal.email || ctx.principal.identityId);
+  if (!added.length && !removed.length) return { added, removed };
+  const titles = new Map((await store.listApps()).map(app => [app.id, app.title]));
+  const details = { name: organization.name, added: added.map(id => titles.get(id) || id), removed: removed.map(id => titles.get(id) || id) };
+  await audit.record(ctx, { organizationId: organization.id, action: 'organization.apps_changed', targetType: 'organization', targetId: organization.id, details });
+  await audit.record(ctx, { action: 'organization.apps_changed', targetType: 'organization', targetId: organization.id, details });
+  return { added, removed };
+}
+
+// Die Organisation stammt aus dem Login-Kontext, nie aus der Anfrage.
+// Ohne aktive Mitgliedschaft gibt es keine Apps.
+async function listVisibleApps(ctx) {
+  requireAuthenticated(ctx);
+  const apps = await store.listApps();
+  if (ctx.isPlatformAdmin) return apps;
+  const membership = ctx.membership;
+  if (!membership || membership.status !== 'Active' || membership.orgStatus !== 'Active') return [];
+  const granted = new Set(await appAccess.listGrantedAppIds(membership.organizationId));
+  return apps.filter(app => granted.has(app.id));
+}
+
+async function readAppHtml(ctx, appId) {
+  requireAuthenticated(ctx);
+  if (!ctx.isPlatformAdmin) {
+    const membership = ctx.membership;
+    if (!membership) throw new AccessDenied(404, 'Nicht gefunden.', { reason: 'no_membership', appId });
+    authorizeOrg(ctx, membership.organizationId, 'apps.use');
+    if (!(await appAccess.hasGrant(membership.organizationId, appId))) {
+      throw new AccessDenied(404, 'Nicht gefunden.', { reason: 'app_not_granted', appId });
+    }
+  }
+  return store.readHtml(appId);
+}
+
+async function getOrganizationApps(ctx, organizationId) {
+  requirePlatformAdmin(ctx);
+  await organizations.getOrThrow(organizationId);
+  return { appIds: await appAccess.listGrantedAppIds(organizationId) };
+}
+
+async function setOrganizationApps(ctx, organizationId, appIds) {
+  requirePlatformAdmin(ctx);
+  const organization = await organizations.getOrThrow(organizationId);
+  const valid = await validAppIds(appIds);
+  await applyAppGrants(ctx, organization, valid);
+  return { appIds: await appAccess.listGrantedAppIds(organizationId) };
+}
+
+async function deleteApp(ctx, appId) {
+  requirePlatformAdmin(ctx);
+  await store.deleteApp(appId);
+  const all = await organizations.list();
+  await appAccess.removeAppEverywhere(appId, all.map(o => o.id));
+  await audit.record(ctx, { action: 'app.deleted', targetType: 'app', targetId: appId });
 }
 
 function me(ctx) {
@@ -271,5 +345,10 @@ module.exports = {
   setOrganizationStatus,
   listAudit,
   listPlatformAudit,
+  listVisibleApps,
+  readAppHtml,
+  getOrganizationApps,
+  setOrganizationApps,
+  deleteApp,
   isValidRole,
 };

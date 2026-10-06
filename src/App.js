@@ -69,6 +69,15 @@ function Home({ isPlatformAdmin }) {
 
       {loadError && <p className="page-error" role="alert">{loadError}</p>}
 
+      {apps && !apps.length && !loadError && (
+        <div className="page page-narrow">
+          <div className="panel stack">
+            <h1>Noch keine Apps</h1>
+            <p className="hint">{isPlatformAdmin ? 'Lege über „+ Neue App“ die erste App an.' : 'Für deine Organisation sind noch keine Apps freigegeben. Wende dich an deinen Administrator.'}</p>
+          </div>
+        </div>
+      )}
+
       <main className="tiles" aria-busy={apps === null}>
         {apps && sortForDisplay(apps).map(app => <Tile key={app.id} app={app} />)}
       </main>
@@ -103,6 +112,32 @@ function Notice({ title, children }) {
   );
 }
 
+// Startseite für Besucher ohne Anmeldung: keine Apps, nur Erklärung und Login.
+function Landing() {
+  return (
+    <main className="landing">
+      <div className="landing-card">
+        <p className="eyebrow">KanzleiMind</p>
+        <h1>Die digitalen Werkzeuge deiner Kanzlei an einem Ort.</h1>
+        <p className="landing-lead">
+          KanzleiMind bündelt KI-Anwendungen und Tools für den Kanzleialltag – sicher getrennt pro Organisation
+          und nur für die Personen, die du einlädst.
+        </p>
+        <ul className="landing-points">
+          <li>Alle freigegebenen Apps auf einer Startseite</li>
+          <li>Zugang nur auf Einladung deiner Organisation</li>
+          <li>Anmeldung per E-Mail-Code, ohne Passwort</li>
+        </ul>
+        <div className="landing-actions">
+          <a className="btn btn-primary btn-lg" href={LOGIN_URL('/')}>Anmelden</a>
+          <a className="btn btn-lg" href={LOGIN_URL('/')}>Konto erstellen</a>
+        </div>
+        <p className="hint">Neu hier? Wähle auf der nächsten Seite „Konto erstellen“ bzw. „Kein Konto?“ und nutze die E-Mail-Adresse, an die deine Einladung ging.</p>
+      </div>
+    </main>
+  );
+}
+
 function App() {
   const path = usePath();
   const [me, setMe] = useState(null);
@@ -122,24 +157,46 @@ function App() {
   const orgAdmin = signedIn && isOrgAdmin(me);
   const segments = path.split('/').filter(Boolean).map(decodeURIComponent);
 
+  const membership = signedIn ? me.membership : null;
+  const blocked = membership && (membership.status !== 'Active' || membership.orgStatus !== 'Active');
+
   let page;
   let section = 'apps';
-  if (segments[0] === 'einladung') {
+  if (!me) {
+    page = null;
+  } else if (segments[0] === 'einladung') {
     section = '';
     page = me ? <Invitation me={me} onAccepted={loadMe} /> : null;
+  } else if (!signedIn) {
+    section = '';
+    page = <Landing />;
+  } else if (!platformAdmin && !membership) {
+    section = '';
+    page = (
+      <Notice title="Noch kein Zugang">
+        <p>Du bist als <strong>{me.email}</strong> angemeldet, aber noch keiner Organisation zugeordnet.</p>
+        <p className="hint">Öffne den Einladungslink aus deiner E-Mail. Hast du keine Einladung erhalten, wende dich an den Administrator deiner Organisation.</p>
+        <p><a className="btn" href={LOGOUT_URL}>Abmelden</a></p>
+      </Notice>
+    );
+  } else if (!platformAdmin && blocked) {
+    section = '';
+    page = (
+      <Notice title="Zugang deaktiviert">
+        <p>{membership.orgStatus !== 'Active' ? 'Deine Organisation ist deaktiviert.' : 'Dein Konto wurde deaktiviert.'} Wende dich bei Fragen an deinen Administrator.</p>
+        <p><a className="btn" href={LOGOUT_URL}>Abmelden</a></p>
+      </Notice>
+    );
   } else if (segments[0] === 'organisation') {
     section = 'org';
-    if (!me) page = null;
-    else if (!signedIn) page = <Notice title="Bitte anmelden"><p><a className="btn btn-primary" href={LOGIN_URL(path)}>Anmelden</a></p></Notice>;
-    else if (!orgAdmin) page = <Notice title="Kein Zugriff"><p>Die Benutzerverwaltung steht nur Organization Admins zur Verfügung.</p></Notice>;
+    if (!orgAdmin) page = <Notice title="Kein Zugriff"><p>Die Benutzerverwaltung steht nur Organization Admins zur Verfügung.</p></Notice>;
     else page = <Organization key={me.membership.organizationId} orgId={me.membership.organizationId} tab={segments[1]} basePath="/organisation" me={me} />;
   } else if (segments[0] === 'plattform') {
     section = 'platform';
-    if (!me) page = null;
-    else if (!platformAdmin) page = <Notice title="Kein Zugriff"><p>Dieser Bereich ist der Plattform-Verwaltung vorbehalten.</p></Notice>;
+    if (!platformAdmin) page = <Notice title="Kein Zugriff"><p>Dieser Bereich ist der Plattform-Verwaltung vorbehalten.</p></Notice>;
     else if (segments[1] === 'org' && segments[2]) {
       const base = `/plattform/org/${encodeURIComponent(segments[2])}`;
-      page = <Organization key={segments[2]} orgId={segments[2]} tab={segments[3]} basePath={base} me={me} backLink={<Link to="/plattform" className="back-link">← Alle Organisationen</Link>} />;
+      page = <Organization key={segments[2]} orgId={segments[2]} tab={segments[3]} basePath={base} me={me} platformView backLink={<Link to="/plattform" className="back-link">← Alle Organisationen</Link>} />;
     } else page = <Platform />;
   } else {
     page = <Home isPlatformAdmin={platformAdmin} />;

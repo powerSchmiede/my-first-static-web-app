@@ -5,10 +5,13 @@ import { Modal } from '../Admin';
 import { Badge, ErrorText, InviteResult, StatCard, STATUS_TONES } from '../ui';
 import { formatDate } from '../labels';
 import { AuditList } from './Organization';
+import { AppChecklist, useAllApps } from './AppAccess';
 
 function CreateOrganizationDialog({ onClose, onCreated }) {
   const [name, setName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
+  const [appIds, setAppIds] = useState(new Set());
+  const { apps, error: appsError } = useAllApps();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -18,7 +21,7 @@ function CreateOrganizationDialog({ onClose, onCreated }) {
     setBusy(true);
     setError('');
     try {
-      const response = await api.createOrganization({ name: name.trim(), adminEmail: adminEmail.trim() });
+      const response = await api.createOrganization({ name: name.trim(), adminEmail: adminEmail.trim(), appIds: [...appIds] });
       setResult(response);
       onCreated();
     } catch (err) {
@@ -47,6 +50,11 @@ function CreateOrganizationDialog({ onClose, onCreated }) {
             <input type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="admin@kunde.de" autoComplete="off" required />
             <small>Diese Person erhält eine Einladung und wird nach der Anmeldung Organization Admin.</small>
           </label>
+          <fieldset className="field">
+            <legend>Freigegebene Apps</legend>
+            <AppChecklist apps={apps} selected={appIds} onChange={setAppIds} disabled={busy} />
+            <ErrorText error={appsError} />
+          </fieldset>
           <ErrorText error={error} />
           <div className="form-actions">
             <button type="button" className="btn" onClick={onClose} disabled={busy}>Abbrechen</button>

@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { TableClient } = require('@azure/data-tables');
 const { BlobServiceClient } = require('@azure/storage-blob');
 
@@ -24,7 +26,7 @@ const DEFAULT_APPS = [
   { id: 'otto-schmidt-answers', title: 'Otto Schmidt Answers', type: 'none', icon: 'document', background: 'lines' },
   { id: 'gkk-team', title: 'KanzleiMind Team', type: 'none', icon: 'team', background: 'star' },
   { id: 'schweitzer', title: 'Schweitzer', type: 'none', icon: 'book', background: 'city' },
-  { id: 'ki-bild-check', title: 'KI-Bild-Check', type: 'link', url: '/tools/ki-bild-check/index.html', icon: 'image', background: 'squares' },
+  { id: 'ki-bild-check', title: 'KI-Bild-Check', type: 'html', icon: 'image', background: 'squares' },
 ];
 
 const { HttpError } = require('./errors');
@@ -64,6 +66,30 @@ async function seed(table) {
   await table.upsertEntity({ partitionKey: 'meta', rowKey: 'seeded' });
 }
 
+// Mitgelieferte HTML-Apps. Sie liegen im API-Paket statt öffentlich unter /tools,
+// damit nur freigegebene Organisationen sie abrufen können.
+const BUILTIN_HTML = { 'ki-bild-check': path.join(__dirname, '..', '..', 'builtin', 'ki-bild-check.html') };
+
+// Überführt mitgelieferte Apps in den Blob-Speicher: Kacheln, die noch auf die alte
+// öffentliche Adresse zeigen oder noch keine Datei haben, werden zu HTML-Apps.
+async function migrateBuiltins(table, container) {
+  for (const [id, file] of Object.entries(BUILTIN_HTML)) {
+    let entity;
+    try {
+      entity = await table.getEntity(PARTITION, id);
+    } catch (e) {
+      if (e.statusCode === 404) continue;
+      throw e;
+    }
+    const legacyLink = entity.type === 'link' && String(entity.url || '').startsWith('/tools/');
+    const missingFile = entity.type === 'html' && !entity.hasFile;
+    if (!legacyLink && !missingFile) continue;
+    const html = fs.readFileSync(file);
+    await container.getBlockBlobClient(`${id}.html`).upload(html, html.length, { blobHTTPHeaders: { blobContentType: 'text/html; charset=utf-8' } });
+    await table.updateEntity({ partitionKey: PARTITION, rowKey: id, type: 'html', url: '', hasFile: true }, 'Merge');
+  }
+}
+
 function init() {
   if (!ready) {
     ready = (async () => {
@@ -75,6 +101,7 @@ function init() {
       }
       await clients.container.createIfNotExists();
       await seed(clients.table);
+      await migrateBuiltins(clients.table, clients.container);
       return clients;
     })();
     ready.catch(() => { ready = undefined; });

@@ -57,6 +57,8 @@ export const listOrganizations = () => request('GET', '/api/platform/orgs');
 export const createOrganization = data => request('POST', '/api/platform/orgs', data);
 export const setOrganizationStatus = (orgId, status) => request('PATCH', `/api/platform/orgs/${enc(orgId)}`, { status });
 export const listPlatformAudit = () => request('GET', '/api/platform/audit');
+export const getOrganizationApps = orgId => request('GET', `/api/platform/orgs/${enc(orgId)}/apps`);
+export const setOrganizationApps = (orgId, appIds) => request('PUT', `/api/platform/orgs/${enc(orgId)}/apps`, { appIds });
 
 // Einladung annehmen
 export const previewInvitation = token => request('POST', '/api/invitations/preview', { token });

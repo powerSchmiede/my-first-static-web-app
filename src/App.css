@@ -741,7 +741,66 @@ a.tile:focus-visible {
 .invitation-card { margin-top: 24px; padding: 28px; }
 .invitation-card p { margin: 0; line-height: 1.5; }
 
+/* Startseite ohne Login */
+.landing {
+  max-width: 1200px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 72px 48px;
+}
+
+.landing-card {
+  max-width: 640px;
+  display: grid;
+  gap: 20px;
+}
+
+.landing h1 { margin: 0; font-size: 40px; line-height: 1.15; font-weight: 800; letter-spacing: -.02em; }
+.landing-lead { margin: 0; font-size: 17px; line-height: 1.55; color: #3D3D42; }
+
+.landing-points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.landing-points li::before { content: '✓'; color: #7B2D8E; font-weight: 800; margin-right: 10px; }
+.landing-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn-lg { padding: 12px 22px; font-size: 15px; }
+
+/* App-Freigaben */
+.app-checklist { display: grid; gap: 8px; font-weight: 500; }
+.app-checklist-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #6E6E74; }
+.app-checklist ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-height: 340px; overflow-y: auto; }
+
+.app-check {
+  display: grid;
+  grid-template-columns: auto 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 6px 8px;
+  border: 1px solid #E2DDD9;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-check.is-selected { border-color: #17171A; background: #F7F4F2; }
+.app-check .tile-art-mini { height: 32px; }
+.app-check-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-check input:focus-visible { outline: 2px solid #3B6FD9; outline-offset: 2px; }
+
+.link-btn { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; font-weight: 700; color: #3B6FD9; cursor: pointer; }
+.link-btn:disabled { opacity: .5; cursor: default; }
+
 @media (max-width: 640px) {
+  .landing { padding: 40px 16px; }
+  .landing h1 { font-size: 28px; }
   .topbar { flex-wrap: wrap; }
   .topbar-nav { order: 3; width: 100%; margin: 0; overflow-x: auto; }
   .home-actions { padding: 16px 16px 0; }

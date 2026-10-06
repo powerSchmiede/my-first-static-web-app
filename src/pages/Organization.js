@@ -3,6 +3,7 @@ import * as api from '../api';
 import { Link } from '../router';
 import { Modal } from '../Admin';
 import { Badge, ErrorText, InviteResult, StatCard, STATUS_TONES } from '../ui';
+import OrganizationApps from './AppAccess';
 import { AUDIT_LABELS, INVITATION_STATUS_LABELS, ROLE_LABELS, USER_STATUS_LABELS, formatDate } from '../labels';
 
 const TABS = [
@@ -11,6 +12,9 @@ const TABS = [
   { key: 'einladungen', label: 'Einladungen' },
   { key: 'einstellungen', label: 'Einstellungen' },
 ];
+
+// Nur in der Plattform-Ansicht: App-Freigaben vergibt ausschließlich der Plattform-Admin.
+const PLATFORM_TABS = [...TABS.slice(0, 3), { key: 'apps', label: 'Apps' }, TABS[3]];
 
 function InviteDialog({ orgId, onClose, onInvited }) {
   const [email, setEmail] = useState('');
@@ -110,6 +114,8 @@ export function AuditList({ entries }) {
             {AUDIT_LABELS[entry.action] || entry.action}
             {entry.details && entry.details.email ? <span className="muted"> · {entry.details.email}</span> : null}
             {entry.details && entry.details.name ? <span className="muted"> · {entry.details.name}</span> : null}
+            {entry.details && entry.details.added && entry.details.added.length ? <span className="muted"> · + {entry.details.added.join(', ')}</span> : null}
+            {entry.details && entry.details.removed && entry.details.removed.length ? <span className="muted"> · − {entry.details.removed.join(', ')}</span> : null}
           </span>
           <span className="audit-actor muted">{entry.actorEmail || 'System'}</span>
           {entry.result !== 'success' && <Badge tone={STATUS_TONES[entry.result]}>{entry.result === 'denied' ? 'verweigert' : 'fehlgeschlagen'}</Badge>}
@@ -306,7 +312,7 @@ function Settings({ org, onRenamed }) {
   );
 }
 
-export default function Organization({ orgId, tab, basePath, me, backLink }) {
+export default function Organization({ orgId, tab, basePath, me, backLink, platformView }) {
   const [org, setOrg] = useState(null);
   const [users, setUsers] = useState([]);
   const [invitations, setInvitations] = useState([]);
@@ -365,20 +371,21 @@ export default function Organization({ orgId, tab, basePath, me, backLink }) {
   if (error) return <div className="page"><p className="page-error" role="alert">{error}</p></div>;
   if (!org) return <div className="page"><p className="hint">Wird geladen …</p></div>;
 
-  const active = TABS.find(t => t.key === (tab || '')) || TABS[0];
+  const tabs = platformView ? PLATFORM_TABS : TABS;
+  const active = tabs.find(t => t.key === (tab || '')) || tabs[0];
 
   return (
     <div className="page">
       {backLink}
       <div className="page-head">
         <div>
-          <p className="eyebrow">Meine Organisation</p>
+          <p className="eyebrow">{platformView ? 'Organisation' : 'Meine Organisation'}</p>
           <h1>{org.name}</h1>
         </div>
         {org.status !== 'Active' && <Badge tone="gray">Deaktiviert</Badge>}
       </div>
       <nav className="tabs" aria-label="Organisation">
-        {TABS.map(t => (
+        {tabs.map(t => (
           <Link key={t.key} to={t.key ? `${basePath}/${t.key}` : basePath} className={t === active ? 'is-active' : ''} aria-current={t === active ? 'page' : undefined}>
             {t.label}
             {t.key === 'einladungen' && org.stats.pendingInvitations > 0 && <span className="tab-count">{org.stats.pendingInvitations}</span>}
@@ -391,6 +398,7 @@ export default function Organization({ orgId, tab, basePath, me, backLink }) {
       {active.key === '' && <Overview org={org} audit={audit} basePath={basePath} onInvite={handlers.onInvite} />}
       {active.key === 'benutzer' && <Users users={users} invitations={invitations} me={me} busyId={busyId} {...handlers} />}
       {active.key === 'einladungen' && <Invitations invitations={invitations} busyId={busyId} {...handlers} />}
+      {active.key === 'apps' && <OrganizationApps orgId={orgId} onSaved={load} />}
       {active.key === 'einstellungen' && <Settings org={org} onRenamed={load} />}
 
       {dialog && dialog.kind === 'invite' && <InviteDialog orgId={orgId} onClose={() => setDialog(null)} onInvited={load} />}

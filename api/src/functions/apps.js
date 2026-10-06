@@ -3,47 +3,31 @@ const store = require('../lib/store');
 const audit = require('../lib/audit');
 const { endpoint, readJson } = require('../lib/http');
 const { requirePlatformAdmin } = require('../lib/authz');
+const service = require('../lib/service');
 
 // Hochgeladene Apps laufen in einer Sandbox mit eigenem Ursprung,
 // damit sie nicht auf Daten der Startseite (z. B. Login) zugreifen können.
 const SANDBOX_CSP = 'sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-modals';
 
-function handlePublic(handler) {
-  return async (request, context) => {
-    try {
-      return await handler(request, context);
-    } catch (e) {
-      if (e instanceof store.HttpError) {
-        if (e.status >= 500) context.error(e.message);
-        return { status: e.status, jsonBody: { error: e.message } };
-      }
-      context.error(e);
-      return { status: 500, jsonBody: { error: 'Interner Fehler. Bitte später erneut versuchen.' } };
-    }
-  };
-}
-
+// Apps sehen nur angemeldete Benutzer, und zwar nur die für ihre Organisation
+// freigegebenen. Plattform-Admins sehen alle.
 app.http('listApps', {
   methods: ['GET'],
   authLevel: 'anonymous',
   route: 'apps',
-  handler: handlePublic(async () => ({
-    jsonBody: await store.listApps(),
-    headers: { 'Cache-Control': 'no-store' },
-  })),
+  handler: endpoint(async (request, ctx) => ({ jsonBody: await service.listVisibleApps(ctx) })),
 });
 
 app.http('appHtml', {
   methods: ['GET'],
   authLevel: 'anonymous',
   route: 'apps/{id}/html',
-  handler: handlePublic(async request => ({
-    body: await store.readHtml(request.params.id),
+  handler: endpoint(async (request, ctx) => ({
+    body: await service.readAppHtml(ctx, request.params.id),
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Security-Policy': SANDBOX_CSP,
       'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'no-cache',
     },
   })),
 });
@@ -79,9 +63,7 @@ app.http('deleteApp', {
   authLevel: 'anonymous',
   route: 'manage/apps/{id}',
   handler: endpoint(async (request, ctx) => {
-    requirePlatformAdmin(ctx);
-    await store.deleteApp(request.params.id);
-    await audit.record(ctx, { action: 'app.deleted', targetType: 'app', targetId: request.params.id });
+    await service.deleteApp(ctx, request.params.id);
     return { status: 204 };
   }),
 });

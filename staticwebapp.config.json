@@ -1,6 +1,14 @@
 {
     "routes": [
         {
+            "route": "/api/apps",
+            "allowedRoles": ["authenticated"]
+        },
+        {
+            "route": "/api/apps/*",
+            "allowedRoles": ["authenticated"]
+        },
+        {
             "route": "/api/manage/*",
             "allowedRoles": ["authenticated"]
         },
@@ -23,7 +31,7 @@
     ],
     "navigationFallback": {
         "rewrite": "/index.html",
-        "exclude": ["/api/*", "/.auth/*", "/tools/*", "/static/*", "/*.{ico,png,json,txt,js,css}"]
+        "exclude": ["/api/*", "/.auth/*","/static/*", "/*.{ico,png,json,txt,js,css}"]
     },
     "globalHeaders": {
         "X-Content-Type-Options": "nosniff",

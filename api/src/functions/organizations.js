@@ -107,7 +107,7 @@ app.http('platformOrganizations', {
     if (request.method === 'GET') return { jsonBody: await service.listOrganizations(ctx) };
     if (request.method === 'POST') {
       const body = await readJson(request);
-      return { status: 201, jsonBody: await service.createOrganization(ctx, { name: body.name, adminEmail: body.adminEmail }) };
+      return { status: 201, jsonBody: await service.createOrganization(ctx, { name: body.name, adminEmail: body.adminEmail, appIds: body.appIds }) };
     }
     return methodNotAllowed();
   }),
@@ -120,6 +120,21 @@ app.http('platformOrganization', {
   handler: endpoint(async (request, ctx) => {
     const body = await readJson(request);
     return { jsonBody: await service.setOrganizationStatus(ctx, request.params.orgId, body.status) };
+  }),
+});
+
+app.http('platformOrganizationApps', {
+  methods: ['GET', 'PUT'],
+  authLevel: 'anonymous',
+  route: 'platform/orgs/{orgId}/apps',
+  handler: endpoint(async (request, ctx) => {
+    const { orgId } = request.params;
+    if (request.method === 'GET') return { jsonBody: await service.getOrganizationApps(ctx, orgId) };
+    if (request.method === 'PUT') {
+      const body = await readJson(request);
+      return { jsonBody: await service.setOrganizationApps(ctx, orgId, body.appIds) };
+    }
+    return methodNotAllowed();
   }),
 });
 

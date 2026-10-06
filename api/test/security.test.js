@@ -209,3 +209,80 @@ test('Audit-Log enthält Aktionen und verweigerte Zugriffe der eigenen Organisat
   const denied = log.body.find(entry => entry.action === 'access.denied');
   assert.equal(denied.result, 'denied');
 });
+
+
+// ---------- App-Freigaben ----------
+
+const HTML_APP = 'ki-bild-check';
+const appIds = response => response.body.map(app => app.id);
+
+test('Ohne Login gibt es keine Apps und keine App-Inhalte', async () => {
+  assert.equal((await call('GET', 'apps')).status, 401);
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`)).status, 401);
+});
+
+test('Ohne Freigabe sieht eine Organisation keine Apps', async () => {
+  const response = await call('GET', 'apps', { as: bob });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, []);
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: bob })).status, 404);
+});
+
+test('Benutzer ohne Organisation sehen keine Apps', async () => {
+  const response = await call('GET', 'apps', { as: mallory });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, []);
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: mallory })).status, 404);
+});
+
+test('Freigaben gelten nur für die eigene Organisation', async () => {
+  const set = await call('PUT', `platform/orgs/${state.orgA}/apps`, { as: owner, body: { appIds: [HTML_APP] } });
+  assert.equal(set.status, 200);
+  assert.deepEqual(set.body.appIds, [HTML_APP]);
+
+  assert.deepEqual(appIds(await call('GET', 'apps', { as: alice })), [HTML_APP]);
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: alice })).status, 200);
+
+  // Org B bleibt ohne Zugriff, auch bei direktem Aufruf der Adresse.
+  assert.deepEqual((await call('GET', 'apps', { as: bob })).body, []);
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: bob })).status, 404);
+});
+
+test('Nur Plattform-Admins vergeben App-Freigaben', async () => {
+  assert.equal((await call('PUT', `platform/orgs/${state.orgA}/apps`, { as: alice, body: { appIds: [] } })).status, 403);
+  assert.equal((await call('PUT', `platform/orgs/${state.orgB}/apps`, { as: bob, body: { appIds: [HTML_APP] } })).status, 403);
+  assert.equal((await call('GET', `platform/orgs/${state.orgA}/apps`, { as: alice })).status, 403);
+  assert.deepEqual((await call('GET', 'apps', { as: bob })).body, []);
+});
+
+test('Unbekannte App-IDs werden abgelehnt', async () => {
+  assert.equal((await call('PUT', `platform/orgs/${state.orgA}/apps`, { as: owner, body: { appIds: ['gibt-es-nicht'] } })).status, 400);
+  assert.equal((await call('PUT', `platform/orgs/${state.orgA}/apps`, { as: owner, body: { appIds: 'ki-bild-check' } })).status, 400);
+  assert.deepEqual((await call('GET', `platform/orgs/${state.orgA}/apps`, { as: owner })).body.appIds, [HTML_APP]);
+});
+
+test('Deaktivierte Organisation verliert den Zugriff auf Apps', async () => {
+  await call('PATCH', `platform/orgs/${state.orgA}`, { as: owner, body: { status: 'Disabled' } });
+  assert.deepEqual((await call('GET', 'apps', { as: alice })).body, []);
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: alice })).status, 403);
+  await call('PATCH', `platform/orgs/${state.orgA}`, { as: owner, body: { status: 'Active' } });
+  assert.equal((await call('GET', `apps/${HTML_APP}/html`, { as: alice })).status, 200);
+});
+
+test('Neue Organisation erhält ausgewählte Apps, neue Apps sind nirgends freigegeben', async () => {
+  const created = await call('POST', 'platform/orgs', { as: owner, body: { name: `Org C ${run}`, adminEmail: `dave-${run}@c.test`, appIds: [HTML_APP] } });
+  assert.equal(created.status, 201);
+  assert.deepEqual((await call('GET', `platform/orgs/${created.body.organization.id}/apps`, { as: owner })).body.appIds, [HTML_APP]);
+
+  const app = await call('POST', 'manage/apps', { as: owner, body: { title: `Test ${run}`, type: 'none', icon: 'sparkle', background: 'rings' } });
+  assert.equal(app.status, 201);
+  assert.ok(!appIds(await call('GET', 'apps', { as: alice })).includes(app.body.id));
+  assert.ok(appIds(await call('GET', 'apps', { as: owner })).includes(app.body.id));
+});
+
+test('Gelöschte Apps verlieren alle Freigaben', async () => {
+  const app = await call('POST', 'manage/apps', { as: owner, body: { title: `Weg ${run}`, type: 'none', icon: 'sparkle', background: 'rings' } });
+  await call('PUT', `platform/orgs/${state.orgA}/apps`, { as: owner, body: { appIds: [HTML_APP, app.body.id] } });
+  assert.equal((await call('DELETE', `manage/apps/${app.body.id}`, { as: owner })).status, 204);
+  assert.deepEqual((await call('GET', `platform/orgs/${state.orgA}/apps`, { as: owner })).body.appIds, [HTML_APP]);
+});
