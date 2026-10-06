@@ -66,12 +66,58 @@ function CreateOrganizationDialog({ onClose, onCreated }) {
   );
 }
 
+function DeleteOrganizationDialog({ org, onClose, onDeleted }) {
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const matches = confirm.trim() === org.name;
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!matches) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.deleteOrganization(org.id, confirm.trim());
+      onDeleted();
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Organisation endgültig löschen" onClose={busy ? () => {} : onClose}>
+      <form className="stack" onSubmit={submit}>
+        <p className="notice notice-warn">
+          <strong>{org.name}</strong> wird mit allen Benutzerzuordnungen, Einladungen, App-Freigaben und dem Protokoll der
+          Organisation gelöscht. Das lässt sich nicht rückgängig machen.
+        </p>
+        <p className="hint">
+          Die Login-Konten der Benutzer bleiben bestehen; sie haben danach keinen Zugriff mehr und können neu eingeladen werden.
+          Im Plattform-Protokoll bleibt vermerkt, wer die Organisation gelöscht hat.
+        </p>
+        <label className="field">
+          <span>Zur Bestätigung den Namen eingeben: <strong>{org.name}</strong></span>
+          <input value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="off" autoFocus />
+        </label>
+        <ErrorText error={error} />
+        <div className="form-actions">
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>Abbrechen</button>
+          <button type="submit" className="btn btn-danger" disabled={busy || !matches}>{busy ? 'Löschen …' : 'Endgültig löschen'}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function Platform() {
   const [orgs, setOrgs] = useState(null);
   const [audit, setAudit] = useState(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -145,6 +191,9 @@ export default function Platform() {
                     <button type="button" className="btn btn-sm" disabled={busyId === org.id} onClick={() => toggle(org)}>
                       {org.status === 'Active' ? 'Deaktivieren' : 'Aktivieren'}
                     </button>
+                    {org.status !== 'Active' && (
+                      <button type="button" className="btn btn-sm btn-danger-outline" disabled={busyId === org.id} onClick={() => setDeleting(org)}>Löschen</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -160,6 +209,7 @@ export default function Platform() {
       </div>
 
       {creating && <CreateOrganizationDialog onClose={() => setCreating(false)} onCreated={load} />}
+      {deleting && <DeleteOrganizationDialog org={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setDeleting(null); load(); }} />}
     </div>
   );
 }

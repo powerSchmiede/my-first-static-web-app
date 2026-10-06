@@ -22,6 +22,7 @@ export const AUDIT_LABELS = {
   'organization.disabled': 'Organisation deaktiviert',
   'organization.enabled': 'Organisation aktiviert',
   'organization.apps_changed': 'App-Freigaben geändert',
+  'organization.deleted': 'Organisation gelöscht',
   'invitation.created': 'Benutzer eingeladen',
   'invitation.resent': 'Einladung erneut gesendet',
   'invitation.revoked': 'Einladung zurückgezogen',

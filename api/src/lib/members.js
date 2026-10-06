@@ -275,6 +275,38 @@ async function acceptInvitation(token, principal) {
   return { user: toUser(user), invitation: toInvitation({ ...entity, status: 'Accepted', acceptedAt: now }) };
 }
 
+// Entfernt alle Daten einer Organisation aus OrgData (Benutzer, Einladungen, App-Freigaben)
+// samt Login-Zuordnungen und Einladungslinks. Wiederholbar, falls ein Lauf abbricht.
+async function purgeOrganization(organizationId) {
+  assertOrg(organizationId);
+  const client = await table('orgData');
+  const identities = await table('identities');
+  const entities = await listAll(client, odata`PartitionKey eq ${organizationId}`);
+  const counts = { users: 0, invitations: 0, other: 0 };
+
+  for (const entity of entities) {
+    if (entity.rowKey.startsWith(USER_PREFIX)) {
+      counts.users++;
+      const pointer = entity.identityId ? await getOrNull(identities, entity.identityId, 'membership') : null;
+      if (pointer && pointer.organizationId === organizationId) {
+        await identities.deleteEntity(entity.identityId, 'membership').catch(e => { if (e.statusCode !== 404) throw e; });
+      }
+    } else if (entity.rowKey.startsWith(INVITE_PREFIX)) {
+      counts.invitations++;
+      await dropToken(entity.tokenHash);
+    } else {
+      counts.other++;
+    }
+  }
+
+  // Transaktionen sind auf 100 Einträge derselben Partition begrenzt.
+  for (let i = 0; i < entities.length; i += 100) {
+    const batch = entities.slice(i, i + 100).map(entity => ['delete', { partitionKey: organizationId, rowKey: entity.rowKey }]);
+    await client.submitTransaction(batch);
+  }
+  return counts;
+}
+
 // Liefert die Mitgliedschaft einer Identität aus dem IdentityIndex.
 async function findMembership(identityId) {
   const identities = await table('identities');
@@ -293,6 +325,7 @@ module.exports = {
   findInvitationByToken,
   acceptInvitation,
   findMembership,
+  purgeOrganization,
   countRecentInvitations,
   invitationState,
 };

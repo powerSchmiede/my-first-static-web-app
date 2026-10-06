@@ -338,3 +338,40 @@ test('Alte KanzleiMind-Konten werden auf den neuen Schlüssel umgestellt', async
   // Der alte Schlüssel gilt jetzt als Microsoft-365-Identität und hat keinen Zugriff mehr.
   assert.equal((await call('GET', 'me', { as: { ...principal('legacy', email, 'aad'), userId: `old-${run}` } })).body.membership, null);
 });
+
+
+// ---------- Organisation löschen ----------
+
+test('Organisation löschen: nur Plattform-Admin, nur deaktiviert, nur mit Namensbestätigung, entfernt alles', async () => {
+  const name = `Org Weg ${run}`;
+  const henry = principal('henry', `henry-${run}@weg.test`);
+  const created = await call('POST', 'platform/orgs', { as: owner, body: { name, adminEmail: henry.userDetails, appIds: ['ki-bild-check'] } });
+  const orgId = created.body.organization.id;
+  assert.equal((await call('POST', 'invitations/accept', { as: henry, body: { token: tokenOf(created) } })).status, 200);
+  const pending = await call('POST', `orgs/${orgId}/invitations`, { as: henry, body: { email: `ida-${run}@weg.test`, role: 'OrgUser' } });
+  assert.equal(pending.status, 201);
+
+  // Org-Admins dürfen ihre eigene Organisation nicht löschen.
+  assert.equal((await call('POST', `platform/orgs/${orgId}/delete`, { as: henry, body: { confirmName: name } })).status, 403);
+  // Aktive Organisationen werden nicht gelöscht.
+  assert.equal((await call('POST', `platform/orgs/${orgId}/delete`, { as: owner, body: { confirmName: name } })).status, 409);
+
+  await call('PATCH', `platform/orgs/${orgId}`, { as: owner, body: { status: 'Disabled' } });
+  assert.equal((await call('POST', `platform/orgs/${orgId}/delete`, { as: owner, body: { confirmName: 'falsch' } })).status, 400);
+  assert.equal((await call('POST', `platform/orgs/${orgId}/delete`, { as: owner, body: { confirmName: name } })).status, 204);
+
+  // Organisation, Freigaben, Mitgliedschaft und Einladungslinks sind weg.
+  assert.equal((await call('GET', `platform/orgs/${orgId}/apps`, { as: owner })).status, 404);
+  assert.ok(!(await call('GET', 'platform/orgs', { as: owner })).body.some(o => o.id === orgId));
+  assert.equal((await call('GET', 'me', { as: henry })).body.membership, null);
+  assert.deepEqual((await call('GET', 'apps', { as: henry })).body, []);
+  assert.equal((await call('POST', 'invitations/preview', { body: { token: tokenOf(pending) } })).status, 404);
+  assert.equal((await call('GET', `orgs/${orgId}/audit`, { as: owner })).status, 404);
+
+  // Die Person kann neu in eine andere Organisation eingeladen werden.
+  const again = await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email: henry.userDetails, role: 'OrgUser' } });
+  assert.equal((await call('POST', 'invitations/accept', { as: henry, body: { token: tokenOf(again) } })).status, 200);
+
+  const log = await call('GET', 'platform/audit', { as: owner });
+  assert.ok(log.body.some(entry => entry.action === 'organization.deleted' && entry.targetId === orgId));
+});

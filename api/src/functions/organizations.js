@@ -123,6 +123,18 @@ app.http('platformOrganization', {
   }),
 });
 
+// POST statt DELETE, damit die Namensbestätigung sicher im Body ankommt.
+app.http('platformOrganizationDelete', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'platform/orgs/{orgId}/delete',
+  handler: endpoint(async (request, ctx) => {
+    const body = await readJson(request);
+    await service.deleteOrganization(ctx, request.params.orgId, body.confirmName);
+    return { status: 204 };
+  }),
+});
+
 app.http('platformOrganizationApps', {
   methods: ['GET', 'PUT'],
   authLevel: 'anonymous',

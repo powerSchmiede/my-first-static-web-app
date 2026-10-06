@@ -1,7 +1,9 @@
 const crypto = require('crypto');
 const { table, odata } = require('./tables');
 
-// Nur anhängend: Es gibt bewusst keine Funktionen zum Ändern oder Löschen.
+// Nur anhängend: Es gibt bewusst keine Funktionen zum Ändern einzelner Einträge.
+// Einzige Ausnahme ist das Löschen einer ganzen Organisation (purgeOrganization);
+// der Vorgang selbst bleibt im Plattform-Protokoll stehen.
 
 const PLATFORM_PARTITION = '_platform';
 const MAX_TIME = 9999999999999;
@@ -56,6 +58,19 @@ async function list(organizationId, limit = 100) {
   return items;
 }
 
+async function purgeOrganization(organizationId) {
+  if (!organizationId || organizationId === PLATFORM_PARTITION) throw new Error('Ungültige Organisation');
+  const client = await table('audit');
+  const keys = [];
+  for await (const entity of client.listEntities({ queryOptions: { filter: odata`PartitionKey eq ${organizationId}`, select: ['RowKey'] } })) {
+    keys.push(entity.rowKey);
+  }
+  for (let i = 0; i < keys.length; i += 100) {
+    await client.submitTransaction(keys.slice(i, i + 100).map(rowKey => ['delete', { partitionKey: organizationId, rowKey }]));
+  }
+  return keys.length;
+}
+
 function safeParse(value) {
   try {
     return JSON.parse(value || '{}');
@@ -64,4 +79,4 @@ function safeParse(value) {
   }
 }
 
-module.exports = { record, list, PLATFORM_PARTITION };
+module.exports = { record, list, purgeOrganization, PLATFORM_PARTITION };

@@ -235,6 +235,30 @@ async function setOrganizationStatus(ctx, organizationId, status) {
   return updated;
 }
 
+// Endgültiges Löschen: nur deaktivierte Organisationen und nur mit Bestätigung des Namens.
+// Reihenfolge: erst Zuordnungen und Daten, zuletzt die Organisation selbst. Bricht ein Lauf
+// ab, bleibt die (deaktivierte) Organisation bestehen und das Löschen kann wiederholt werden.
+async function deleteOrganization(ctx, organizationId, confirmName) {
+  requirePlatformAdmin(ctx);
+  const organization = await organizations.getOrThrow(organizationId);
+  if (organization.status !== 'Disabled') {
+    throw new HttpError(409, 'Bitte deaktiviere die Organisation, bevor du sie löschst.', 'organization_active');
+  }
+  if (typeof confirmName !== 'string' || confirmName.trim() !== organization.name) {
+    throw new HttpError(400, 'Der eingegebene Name stimmt nicht mit der Organisation überein.', 'confirm_mismatch');
+  }
+
+  const counts = await members.purgeOrganization(organizationId);
+  const auditEntries = await audit.purgeOrganization(organizationId);
+  await organizations.remove(organizationId);
+  await audit.record(ctx, {
+    action: 'organization.deleted',
+    targetType: 'organization',
+    targetId: organizationId,
+    details: { name: organization.name, users: counts.users, invitations: counts.invitations, auditEntries },
+  });
+}
+
 async function listAudit(ctx, organizationId) {
   authorizeOrg(ctx, organizationId, 'audit.read');
   await organizations.getOrThrow(organizationId);
@@ -343,6 +367,7 @@ module.exports = {
   listOrganizations,
   createOrganization,
   setOrganizationStatus,
+  deleteOrganization,
   listAudit,
   listPlatformAudit,
   listVisibleApps,

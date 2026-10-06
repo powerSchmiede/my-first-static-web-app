@@ -176,6 +176,9 @@ a.tile:focus-visible {
 
 .btn-danger:hover { background: #A60D26; }
 
+.btn-danger-outline { color: #A3101F; border-color: #E8B4BC; }
+.btn-danger-outline:hover { background: #FBE3E6; }
+
 .icon-btn {
   display: inline-grid;
   place-items: center;

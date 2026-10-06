@@ -72,4 +72,9 @@ async function update(organizationId, patch) {
   return toOrganization({ ...entity, ...changes });
 }
 
-module.exports = { create, get, getOrThrow, list, update };
+async function remove(organizationId) {
+  const client = await table('organizations');
+  await client.deleteEntity(PARTITION, organizationId).catch(e => { if (e.statusCode !== 404) throw e; });
+}
+
+module.exports = { create, get, getOrThrow, list, update, remove };
