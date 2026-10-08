@@ -86,6 +86,33 @@ function Home({ canPersonalize, isPlatformAdmin, organizationName }) {
   );
 }
 
+// Bereiche, die in der Navigation schon sichtbar sind, aber noch keine Inhalte haben.
+const UPCOMING = {
+  todos: { label: 'To-dos', title: 'To-dos', text: 'Hier verwaltest du künftig deine Aufgaben und die deines Teams.' },
+  fibu: { label: 'FiBu', title: 'Finanzbuchhaltung', text: 'Hier findest du künftig alles rund um die Finanzbuchhaltung.' },
+  lohn: { label: 'Lohn', title: 'Lohn', text: 'Hier findest du künftig alles rund um die Lohnabrechnung.' },
+  dokumente: { label: 'Dokumente', title: 'Dokumente', text: 'Hier findest du künftig deine Dokumente an einem Ort.' },
+};
+
+function ComingSoon({ section }) {
+  const info = UPCOMING[section];
+  return (
+    <div className="page">
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">In Vorbereitung</p>
+          <h1>{info.title}</h1>
+        </div>
+      </div>
+      <div className="panel coming-soon">
+        <span className="badge badge-blue">Bald verfügbar</span>
+        <p>{info.text}</p>
+        <p className="hint">Dieser Bereich ist noch in Vorbereitung. Wir informieren dich, sobald er freigeschaltet ist.</p>
+      </div>
+    </div>
+  );
+}
+
 function Notice({ title, children }) {
   return (
     <div className="page page-narrow">
@@ -183,6 +210,9 @@ function App() {
   } else if (segments[0] === 'app' && segments[1]) {
     section = 'apps';
     page = <AppViewer key={segments[1]} appId={segments[1]} />;
+  } else if (Object.prototype.hasOwnProperty.call(UPCOMING, segments[0] || '')) {
+    section = segments[0];
+    page = <ComingSoon section={segments[0]} />;
   } else if (segments[0] === 'organisation') {
     section = 'org';
     if (!orgAdmin) page = <Notice title="Kein Zugriff"><p>Die Benutzerverwaltung steht nur Organization Admins zur Verfügung.</p></Notice>;
@@ -201,7 +231,10 @@ function App() {
 
   if (signedIn) {
     const items = [{ key: 'apps', label: 'Apps', to: '/' }];
-    if (orgAdmin) items.push({ key: 'org', label: 'Organisation', to: '/organisation' });
+    if ((membership && !blocked) || platformAdmin) {
+      Object.entries(UPCOMING).forEach(([key, info]) => items.push({ key, label: info.label, to: `/${key}` }));
+    }
+    if (orgAdmin) items.push({ key: 'org', label: 'Organisation', shortLabel: 'Org.', to: '/organisation' });
     if (platformAdmin) items.push({ key: 'platform', label: 'Plattform', to: '/plattform' });
     return <Shell me={me} section={section} items={items}>{page}</Shell>;
   }
