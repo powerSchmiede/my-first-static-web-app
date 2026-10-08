@@ -57,6 +57,7 @@ export const deleteOrgApp = (orgId, id) => request('DELETE', `/api/orgs/${enc(or
 
 // Organisation
 export const getOrganization = orgId => request('GET', `/api/orgs/${enc(orgId)}`);
+export const getOrganizationOverview = orgId => request('GET', `/api/orgs/${enc(orgId)}/overview`);
 export const renameOrganization = (orgId, name) => request('PATCH', `/api/orgs/${enc(orgId)}`, { name });
 export const listUsers = orgId => request('GET', `/api/orgs/${enc(orgId)}/users`);
 export const updateUser = (orgId, userId, patch) => request('PATCH', `/api/orgs/${enc(orgId)}/users/${enc(userId)}`, patch);

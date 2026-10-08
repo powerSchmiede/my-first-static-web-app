@@ -28,21 +28,36 @@ async function activeAdminCount(organizationId) {
 
 // ---------- Organisation ----------
 
+function organizationStats(users, invitations) {
+  return {
+    users: users.length,
+    activeUsers: users.filter(u => u.status === 'Active').length,
+    disabledUsers: users.filter(u => u.status === 'Disabled').length,
+    admins: users.filter(u => u.role === 'OrgAdmin').length,
+    pendingInvitations: invitations.filter(i => i.status === 'Pending').length,
+    expiredInvitations: invitations.filter(i => i.status === 'Expired').length,
+  };
+}
+
 async function getOrganization(ctx, organizationId) {
   authorizeOrg(ctx, organizationId, 'org.read');
   const organization = await organizations.getOrThrow(organizationId);
   const [users, invitations] = await Promise.all([members.listUsers(organizationId), members.listInvitations(organizationId)]);
-  return {
-    ...organization,
-    stats: {
-      users: users.length,
-      activeUsers: users.filter(u => u.status === 'Active').length,
-      disabledUsers: users.filter(u => u.status === 'Disabled').length,
-      admins: users.filter(u => u.role === 'OrgAdmin').length,
-      pendingInvitations: invitations.filter(i => i.status === 'Pending').length,
-      expiredInvitations: invitations.filter(i => i.status === 'Expired').length,
-    },
-  };
+  return { ...organization, stats: organizationStats(users, invitations) };
+}
+
+// Alles für die Organisationsseite in einer Anfrage: eine Rechteprüfung, jede Tabelle einmal lesen.
+async function getOrganizationOverview(ctx, organizationId) {
+  for (const permission of ['org.read', 'users.read', 'invitations.manage', 'audit.read']) {
+    authorizeOrg(ctx, organizationId, permission);
+  }
+  const [organization, users, invitations, auditEntries] = await Promise.all([
+    organizations.getOrThrow(organizationId),
+    members.listUsers(organizationId),
+    members.listInvitations(organizationId),
+    audit.list(organizationId),
+  ]);
+  return { organization: { ...organization, stats: organizationStats(users, invitations) }, users, invitations, audit: auditEntries };
 }
 
 async function renameOrganization(ctx, organizationId, name) {
@@ -479,6 +494,7 @@ function me(ctx) {
 module.exports = {
   me,
   getOrganization,
+  getOrganizationOverview,
   renameOrganization,
   listUsers,
   updateUser,

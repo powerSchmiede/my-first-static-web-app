@@ -507,8 +507,9 @@ a.tile:focus-visible {
 }
 
 /* Verwaltungsseiten */
+/* Gleiche Breite und Ränder wie die Startseite, damit Überschriften an derselben Stelle stehen */
 .page {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   box-sizing: border-box;
   padding: 32px 48px 64px;
@@ -545,9 +546,14 @@ a.tile:focus-visible {
 .tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid #E2DDD9;
+  /* Linie als Schatten statt Rahmen: kein Überstand, also keine Mini-Scrollleiste */
+  box-shadow: inset 0 -1px 0 #E2DDD9;
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+
+.tabs::-webkit-scrollbar { display: none; }
 
 .tabs a {
   display: inline-flex;
@@ -555,7 +561,6 @@ a.tile:focus-visible {
   gap: 6px;
   padding: 10px 14px;
   border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
   color: #5D5D63;
   font-size: 14px;
   font-weight: 700;

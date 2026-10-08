@@ -504,3 +504,17 @@ test('Eigene HTML-Apps laufen abgeschottet und lassen sich nur in KanzleiMind ei
   assert.match(csp, /frame-ancestors 'self'/);
   assert.equal(response.headers['X-Frame-Options'], 'SAMEORIGIN');
 });
+
+test('Organisationsübersicht in einer Anfrage: nur Org-Admin der eigenen Organisation', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const own = await call('GET', `orgs/${state.orgA}/overview`, { as: alice });
+  assert.equal(own.status, 200);
+  assert.equal(own.body.organization.id, state.orgA);
+  assert.ok(own.body.users.some(u => u.email === alice.userDetails));
+  assert.ok(Array.isArray(own.body.invitations) && Array.isArray(own.body.audit));
+  assert.equal(own.body.organization.stats.users, own.body.users.length);
+
+  assert.equal((await call('GET', `orgs/${state.orgA}/overview`, { as: bob })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgA}/overview`, { as: erin })).status, 403);
+  assert.equal((await call('GET', `orgs/${state.orgA}/overview`)).status, 401);
+});

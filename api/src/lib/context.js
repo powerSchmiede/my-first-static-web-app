@@ -85,10 +85,13 @@ async function resolveContext(request) {
   if (!principal) return { principal: null, isPlatformAdmin: false, membership: null };
   await ensureMigrated();
 
-  const isPlatformAdmin = await resolvePlatformAdmin(principal);
+  // Unabhängige Abfragen parallel, damit jede Anfrage schneller beantwortet wird.
+  const [isPlatformAdmin, index] = await Promise.all([
+    resolvePlatformAdmin(principal),
+    members.findMembership(principal.identityId),
+  ]);
 
   let membership = null;
-  const index = await members.findMembership(principal.identityId);
   if (index) {
     const [user, organization] = await Promise.all([
       members.getUser(index.organizationId, index.userId),

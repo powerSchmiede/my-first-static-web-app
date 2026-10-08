@@ -32,6 +32,13 @@ app.http('organization', {
   }),
 });
 
+app.http('organizationOverview', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/overview',
+  handler: endpoint(async (request, ctx) => ({ jsonBody: await service.getOrganizationOverview(ctx, request.params.orgId) })),
+});
+
 app.http('organizationUsers', {
   methods: ['GET'],
   authLevel: 'anonymous',

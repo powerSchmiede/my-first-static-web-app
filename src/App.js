@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import logo from './assets/kanzleimind-logo.png';
 import Tile from './Tile';
-import { fetchApps, fetchMe, LOGIN_URL, LOGOUT_URL, PROVIDERS } from './api';
+import { fetchApps, fetchMe, getOrganizationOverview, LOGIN_URL, LOGOUT_URL, PROVIDERS } from './api';
+import { prefetch, useCached } from './cache';
 import { MicrosoftIcon } from './ui';
 import { Link, usePath } from './router';
 import Organization from './pages/Organization';
@@ -39,21 +40,10 @@ function isOrgAdmin(me) {
 // Mitglieder sehen ihre Apps in ihrer persönlichen Reihenfolge und verwalten sie über
 // das Zahnrad. Plattform-Admins ohne Organisation sehen alle KanzleiMind-Apps.
 function Home({ canPersonalize, isPlatformAdmin, organizationName }) {
-  const [apps, setApps] = useState(null);
-  const [loadError, setLoadError] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      setApps(await fetchApps());
-      setLoadError('');
-    } catch {
-      setLoadError('Die Apps konnten nicht geladen werden. Bitte die Seite neu laden.');
-      setApps(current => current || []);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const { data, error, reload: load } = useCached('apps', fetchApps);
+  const apps = data || (error ? [] : null);
+  const loadError = error && !data ? 'Die Apps konnten nicht geladen werden. Bitte die Seite neu laden.' : '';
 
   const shown = apps && (canPersonalize ? apps : sortForDisplay(apps));
 
@@ -157,6 +147,11 @@ function App() {
 
   const membership = signedIn ? me.membership : null;
   const blocked = membership && (membership.status !== 'Active' || membership.orgStatus !== 'Active');
+  const prefetchOrgId = orgAdmin ? membership.organizationId : null;
+
+  useEffect(() => {
+    if (prefetchOrgId) prefetch(`org:${prefetchOrgId}`, () => getOrganizationOverview(prefetchOrgId));
+  }, [prefetchOrgId]);
 
   let page;
   let section = 'apps';

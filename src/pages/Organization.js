@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import * as api from '../api';
 import { Link } from '../router';
+import { useCached } from '../cache';
 import { Modal } from '../Admin';
 import { Badge, ErrorText, InviteResult, StatCard, STATUS_TONES } from '../ui';
 import OrganizationApps from './AppAccess';
@@ -315,34 +316,17 @@ function Settings({ org, onRenamed }) {
 }
 
 export default function Organization({ orgId, tab, basePath, me, backLink, platformView }) {
-  const [org, setOrg] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [invitations, setInvitations] = useState([]);
-  const [audit, setAudit] = useState(null);
-  const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [dialog, setDialog] = useState(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [o, u, i, a] = await Promise.all([
-        api.getOrganization(orgId),
-        api.listUsers(orgId),
-        api.listInvitations(orgId),
-        api.listAudit(orgId),
-      ]);
-      setOrg(o);
-      setUsers(u.sort((x, y) => (x.displayName || x.email).localeCompare(y.displayName || y.email, 'de')));
-      setInvitations(i);
-      setAudit(a);
-      setError('');
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [orgId]);
-
-  useEffect(() => { load(); }, [load]);
+  // Eine Anfrage für die ganze Seite; beim erneuten Öffnen sofort aus dem Zwischenspeicher.
+  const loader = useCallback(() => api.getOrganizationOverview(orgId), [orgId]);
+  const { data, error, reload: load } = useCached(`org:${orgId}`, loader);
+  const org = data ? data.organization : null;
+  const users = data ? [...data.users].sort((x, y) => (x.displayName || x.email).localeCompare(y.displayName || y.email, 'de')) : [];
+  const invitations = data ? data.invitations : [];
+  const audit = data ? data.audit : null;
 
   async function run(id, action) {
     setBusyId(id);
@@ -370,7 +354,7 @@ export default function Organization({ orgId, tab, basePath, me, backLink, platf
     onInvite: () => setDialog({ kind: 'invite' }),
   };
 
-  if (error) return <div className="page"><p className="page-error" role="alert">{error}</p></div>;
+  if (error && !org) return <div className="page"><p className="page-error" role="alert">{error}</p></div>;
   if (!org) return <div className="page"><p className="hint">Wird geladen …</p></div>;
 
   const tabs = platformView ? PLATFORM_TABS : TABS;
