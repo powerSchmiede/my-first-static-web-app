@@ -34,13 +34,9 @@ export default function AppViewer({ appId }) {
   }
 
   const src = `/api/apps/${encodeURIComponent(app.id)}/html`;
+  // Keine eigene Kopfleiste: Zurück geht es über die Rail, die App bekommt die volle Höhe.
   return (
     <div className="app-viewer">
-      <div className="app-viewer-bar">
-        <Link to="/" className="back-link">← Apps</Link>
-        <strong>{app.title}</strong>
-        <a className="btn btn-sm" href={src} target="_blank" rel="noopener noreferrer">In neuem Tab öffnen</a>
-      </div>
       <iframe className="app-viewer-frame" src={src} title={app.title} sandbox={SANDBOX} referrerPolicy="no-referrer" />
     </div>
   );
