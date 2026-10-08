@@ -70,8 +70,9 @@ async function seed(table) {
 // damit nur freigegebene Organisationen sie abrufen können.
 const BUILTIN_HTML = { 'ki-bild-check': path.join(__dirname, '..', '..', 'builtin', 'ki-bild-check.html') };
 
-// Überführt mitgelieferte Apps in den Blob-Speicher: Kacheln, die noch auf die alte
-// öffentliche Adresse zeigen oder noch keine Datei haben, werden zu HTML-Apps.
+// Hält mitgelieferte Apps im Blob-Speicher aktuell: Kacheln mit der alten öffentlichen
+// Adresse oder ohne Datei werden zu HTML-Apps, neue Versionen der Datei werden übernommen.
+// Hat ein Plattform-Admin eine eigene Datei hochgeladen (customFile), bleibt sie unverändert.
 async function migrateBuiltins(table, container) {
   for (const [id, file] of Object.entries(BUILTIN_HTML)) {
     let entity;
@@ -81,12 +82,13 @@ async function migrateBuiltins(table, container) {
       if (e.statusCode === 404) continue;
       throw e;
     }
-    const legacyLink = entity.type === 'link' && String(entity.url || '').startsWith('/tools/');
-    const missingFile = entity.type === 'html' && !entity.hasFile;
-    if (!legacyLink && !missingFile) continue;
     const html = fs.readFileSync(file);
+    const version = crypto.createHash('sha256').update(html).digest('hex').slice(0, 16);
+    const legacyLink = entity.type === 'link' && String(entity.url || '').startsWith('/tools/');
+    const builtinHtml = entity.type === 'html' && !entity.customFile;
+    if (!legacyLink && !(builtinHtml && (!entity.hasFile || entity.builtinVersion !== version))) continue;
     await container.getBlockBlobClient(`${id}.html`).upload(html, html.length, { blobHTTPHeaders: { blobContentType: 'text/html; charset=utf-8' } });
-    await table.updateEntity({ partitionKey: PARTITION, rowKey: id, type: 'html', url: '', hasFile: true }, 'Merge');
+    await table.updateEntity({ partitionKey: PARTITION, rowKey: id, type: 'html', url: '', hasFile: true, builtinVersion: version }, 'Merge');
   }
 }
 
@@ -220,6 +222,9 @@ async function updateApp(id, input) {
     background: data.background,
     hasFile,
     order: existing.order || 0,
+    // Eigener Upload ersetzt eine mitgelieferte Datei dauerhaft (siehe migrateBuiltins).
+    customFile: !!data.html || !!existing.customFile,
+    builtinVersion: existing.builtinVersion || '',
   };
   await table.updateEntity(entity, 'Replace');
   return toApp(entity);

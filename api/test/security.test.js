@@ -56,7 +56,7 @@ async function call(method, path, { as, body } = {}) {
       body: body ? { string: JSON.stringify(body) } : undefined,
     });
     const result = await route.handler(request, { error: () => {}, log: () => {} });
-    return { status: result.status || 200, body: result.jsonBody };
+    return { status: result.status || 200, body: result.jsonBody, headers: result.headers || {} };
   }
   throw new Error(`Keine Route für ${method} ${path}`);
 }
@@ -491,4 +491,16 @@ test('Höchstzahl eigener Apps', async () => {
     if (entity.rowKey.includes(kimId)) leftovers.push(entity.rowKey);
   }
   assert.deepEqual(leftovers, []);
+});
+
+
+test('Eigene HTML-Apps laufen abgeschottet und lassen sich nur in KanzleiMind einbetten', async () => {
+  const response = await call('GET', `apps/${HTML_APP}/html`, { as: alice });
+  assert.equal(response.status, 200);
+  const csp = response.headers['Content-Security-Policy'];
+  assert.match(csp, /(^|;\s*)sandbox /);
+  assert.ok(!/allow-same-origin/.test(csp), 'App darf nicht den Ursprung von KanzleiMind erhalten');
+  assert.ok(!/allow-top-navigation/.test(csp), 'App darf die Seite nicht umleiten');
+  assert.match(csp, /frame-ancestors 'self'/);
+  assert.equal(response.headers['X-Frame-Options'], 'SAMEORIGIN');
 });

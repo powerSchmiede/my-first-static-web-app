@@ -7,7 +7,9 @@ const service = require('../lib/service');
 
 // Hochgeladene Apps laufen in einer Sandbox mit eigenem Ursprung,
 // damit sie nicht auf Daten der Startseite (z. B. Login) zugreifen können.
-const SANDBOX_CSP = 'sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-modals';
+// frame-ancestors 'self': Einbetten nur in die eigene Oberfläche (App-Ansicht mit Navigation),
+// nie in fremde Seiten (Schutz vor Clickjacking).
+const SANDBOX_CSP = "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-modals; frame-ancestors 'self'";
 
 // Apps sehen nur angemeldete Benutzer, und zwar nur die für ihre Organisation
 // freigegebenen. Plattform-Admins sehen alle.
@@ -28,6 +30,7 @@ app.http('appHtml', {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Security-Policy': SANDBOX_CSP,
       'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'SAMEORIGIN',
     },
   })),
 });

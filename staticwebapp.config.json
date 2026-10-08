@@ -6,7 +6,10 @@
         },
         {
             "route": "/api/apps/*",
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": ["authenticated"],
+            "headers": {
+                "X-Frame-Options": "SAMEORIGIN"
+            }
         },
         {
             "route": "/api/me/*",

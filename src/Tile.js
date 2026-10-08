@@ -1,5 +1,6 @@
 import React from 'react';
 import { backgrounds, icons, DEFAULT_BACKGROUND, DEFAULT_ICON } from './designs';
+import { Link } from './router';
 
 export function TileArt({ uid, icon, background, iconSize = 60, className = '' }) {
   const bg = backgrounds[background] || backgrounds[DEFAULT_BACKGROUND];
@@ -21,7 +22,7 @@ export function TileArt({ uid, icon, background, iconSize = 60, className = '' }
 }
 
 export function appHref(app) {
-  if (app.type === 'html') return `/api/apps/${encodeURIComponent(app.id)}/html`;
+  if (app.type === 'html') return `/app/${encodeURIComponent(app.id)}`;
   if (app.type === 'link') return app.url;
   return null;
 }
@@ -40,6 +41,7 @@ export default function Tile({ app, uid }) {
   );
 
   if (!href) return <div className="tile tile-disabled" aria-disabled="true">{content}</div>;
+  if (app.type === 'html') return <Link className="tile" to={href}>{content}</Link>;
   return (
     <a className="tile" href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
       {content}

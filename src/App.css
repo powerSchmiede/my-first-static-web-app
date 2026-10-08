@@ -748,6 +748,116 @@ a.tile:focus-visible {
 .invitation-card { margin-top: 24px; padding: 28px; }
 .invitation-card p { margin: 0; line-height: 1.5; }
 
+/* Layout mit Rail (angemeldet) */
+.shell { min-height: 100vh; }
+
+.rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 5;
+  width: 84px;
+  box-sizing: border-box;
+  padding: 16px 0;
+  background: #FFFFFF;
+  border-right: 1px solid #EEEAE7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.rail-logo { display: block; line-height: 0; border-radius: 9px; }
+.rail-logo:focus-visible, .rail-item:focus-visible, .avatar:focus-visible { outline: 2px solid #3B6FD9; outline-offset: 2px; }
+
+.rail-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; flex: 1; align-content: start; }
+
+.rail-item {
+  width: 74px;
+  box-sizing: border-box;
+  padding: 8px 2px 7px;
+  border-radius: 10px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  color: #6E6E74;
+  text-decoration: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.rail-item:hover { background: #F4F2F0; color: #17171A; }
+.rail-item.is-active { background: #EEF0FC; color: #4A53C4; }
+
+.shell-content { margin-left: 84px; min-width: 0; }
+
+.user-menu { position: relative; }
+
+.avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 0;
+  background: #17171A;
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.user-popover {
+  position: absolute;
+  left: 54px;
+  bottom: 0;
+  z-index: 20;
+  min-width: 240px;
+  max-width: 300px;
+  background: #FFFFFF;
+  border: 1px solid #EEEAE7;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .15);
+  padding: 6px;
+}
+
+.user-popover-head { display: grid; gap: 2px; padding: 10px 10px 12px; border-bottom: 1px solid #F3F0EE; font-size: 13px; overflow-wrap: anywhere; }
+.user-popover-head span { color: #6E6E74; font-size: 12px; }
+.user-popover-org { font-weight: 700; color: #4A53C4 !important; margin-top: 4px; }
+.user-popover-item { display: block; padding: 9px 10px; border-radius: 7px; color: #17171A; text-decoration: none; font-size: 13px; font-weight: 700; }
+.user-popover-item:hover { background: #F4F2F0; }
+
+/* Startseite (angemeldet) */
+.home-head {
+  max-width: 1400px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 32px 48px 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.home-head h1 { margin: 0; font-size: 28px; font-weight: 800; }
+.home-head .eyebrow { min-height: 14px; }
+
+/* Eigene HTML-App innerhalb der Oberfläche */
+.app-viewer { display: flex; flex-direction: column; height: 100vh; }
+
+.app-viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #FFFFFF;
+  border-bottom: 1px solid #EEEAE7;
+  font-size: 14px;
+}
+
+.app-viewer-bar strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-viewer-frame { flex: 1; width: 100%; border: 0; background: #FFFFFF; }
+
 /* Startseite ohne Login */
 .landing {
   max-width: 1200px;
@@ -832,6 +942,30 @@ a.tile:focus-visible {
 
 @media (max-width: 640px) {
   .my-app-row { grid-template-columns: auto 46px minmax(0, 1fr); }
+
+  /* Rail wird zur Leiste am unteren Rand */
+  .rail {
+    inset: auto 0 0 0;
+    width: auto;
+    height: 64px;
+    padding: 0 8px env(safe-area-inset-bottom);
+    flex-direction: row;
+    justify-content: space-around;
+    gap: 4px;
+    border-right: 0;
+    border-top: 1px solid #EEEAE7;
+  }
+
+  .rail-logo { display: none; }
+  .rail-items { display: flex; flex: 1; justify-content: space-around; gap: 4px; }
+  .rail-item { width: 72px; }
+  .avatar { width: 34px; height: 34px; }
+  .user-popover { left: auto; right: 0; bottom: 48px; }
+  .shell-content { margin-left: 0; padding-bottom: 72px; }
+  .home-head { padding: 20px 16px 0; }
+  .home-head h1 { font-size: 22px; }
+  .app-viewer { height: calc(100vh - 64px); }
+  .app-viewer-bar { padding: 8px 12px; gap: 10px; }
   .landing { padding: 40px 16px; }
   .landing h1 { font-size: 28px; }
   .topbar { flex-wrap: wrap; }

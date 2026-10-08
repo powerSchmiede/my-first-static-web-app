@@ -10,6 +10,8 @@ import Platform from './pages/Platform';
 import Invitation from './pages/Invitation';
 import PlatformApps from './pages/PlatformApps';
 import MyAppsDialog from './pages/MyApps';
+import AppViewer from './pages/AppViewer';
+import Shell from './Shell';
 
 function GearIcon() {
   return (
@@ -36,7 +38,7 @@ function isOrgAdmin(me) {
 
 // Mitglieder sehen ihre Apps in ihrer persönlichen Reihenfolge und verwalten sie über
 // das Zahnrad. Plattform-Admins ohne Organisation sehen alle KanzleiMind-Apps.
-function Home({ canPersonalize, isPlatformAdmin }) {
+function Home({ canPersonalize, isPlatformAdmin, organizationName }) {
   const [apps, setApps] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -57,16 +59,18 @@ function Home({ canPersonalize, isPlatformAdmin }) {
 
   return (
     <>
-      {(canPersonalize || isPlatformAdmin) && (
-        <div className="home-actions">
-          {!canPersonalize && isPlatformAdmin && <Link className="btn" to="/plattform/apps">KanzleiMind-Apps verwalten</Link>}
-          {canPersonalize && (
-            <button type="button" className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Meine Apps verwalten" title="Meine Apps verwalten">
-              <GearIcon />
-            </button>
-          )}
+      <div className="home-head">
+        <div>
+          <p className="eyebrow">{canPersonalize ? organizationName : 'Plattform-Ansicht'}</p>
+          <h1>{canPersonalize ? 'Meine Apps' : 'KanzleiMind-Apps'}</h1>
         </div>
-      )}
+        {!canPersonalize && isPlatformAdmin && <Link className="btn" to="/plattform/apps">Apps verwalten</Link>}
+        {canPersonalize && (
+          <button type="button" className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Meine Apps verwalten" title="Meine Apps verwalten">
+            <GearIcon />
+          </button>
+        )}
+      </div>
 
       {loadError && <p className="page-error" role="alert">{loadError}</p>}
 
@@ -181,6 +185,9 @@ function App() {
         <p><a className="btn" href={LOGOUT_URL}>Abmelden</a></p>
       </Notice>
     );
+  } else if (segments[0] === 'app' && segments[1]) {
+    section = 'apps';
+    page = <AppViewer key={segments[1]} appId={segments[1]} />;
   } else if (segments[0] === 'organisation') {
     section = 'org';
     if (!orgAdmin) page = <Notice title="Kein Zugriff"><p>Die Benutzerverwaltung steht nur Organization Admins zur Verfügung.</p></Notice>;
@@ -194,37 +201,26 @@ function App() {
       page = <Organization key={segments[2]} orgId={segments[2]} tab={segments[3]} basePath={base} me={me} platformView backLink={<Link to="/plattform" className="back-link">← Alle Organisationen</Link>} />;
     } else page = <Platform />;
   } else {
-    page = <Home isPlatformAdmin={platformAdmin} canPersonalize={!!membership && !blocked} />;
+    page = <Home isPlatformAdmin={platformAdmin} canPersonalize={!!membership && !blocked} organizationName={membership ? membership.organizationName : ''} />;
+  }
+
+  if (signedIn) {
+    const items = [{ key: 'apps', label: 'Apps', to: '/' }];
+    if (orgAdmin) items.push({ key: 'org', label: 'Organisation', to: '/organisation' });
+    if (platformAdmin) items.push({ key: 'platform', label: 'Plattform', to: '/plattform' });
+    return <Shell me={me} section={section} items={items}>{page}</Shell>;
   }
 
   return (
     <>
-      <header className="topbar">
-        {section === 'landing' ? <span /> : (
-          <Link to="/" className="topbar-title" aria-label="KanzleiMind Apps – Startseite">
+      {me && section !== 'landing' && (
+        <header className="topbar">
+          <Link to="/" className="topbar-title" aria-label="KanzleiMind – Startseite">
             <img className="topbar-logo" src={logo} alt="" width="986" height="207" />
-            <span className="topbar-suffix">Apps</span>
           </Link>
-        )}
-        <nav className="topbar-nav" aria-label="Hauptnavigation">
-          {signedIn && (orgAdmin || platformAdmin) && <Link to="/" className={section === 'apps' ? 'is-active' : ''}>Apps</Link>}
-          {orgAdmin && <Link to="/organisation" className={section === 'org' ? 'is-active' : ''}>Meine Organisation</Link>}
-          {platformAdmin && <Link to="/plattform" className={section === 'platform' ? 'is-active' : ''}>Plattform</Link>}
-        </nav>
-        <div className="topbar-actions">
-          {signedIn ? (
-            <>
-              <span className="topbar-user" title={me.email}>
-                {me.name || me.email}
-                {me.membership && <span className="topbar-org">{me.membership.organizationName}</span>}
-              </span>
-              <a className="btn" href={LOGOUT_URL}>Abmelden</a>
-            </>
-          ) : me ? (
-            section === 'landing' ? null : <a className="btn" href={LOGIN_URL(path)}>Anmelden</a>
-          ) : null}
-        </div>
-      </header>
+          <a className="btn" href={LOGIN_URL(path)}>Anmelden</a>
+        </header>
+      )}
       {page}
     </>
   );
