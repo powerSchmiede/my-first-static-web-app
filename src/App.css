@@ -997,3 +997,36 @@ a.tile:focus-visible {
   .audit-time { grid-column: 1 / -1; }
   .audit-actor { display: none; }
 }
+
+/* Avatar als Link zum Profil */
+a.avatar { display: grid; place-items: center; text-decoration: none; }
+.avatar.is-active { box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 5px #5F67D3; }
+.avatar-lg { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: #5F67D3; color: #FFFFFF; font-size: 22px; font-weight: 800; flex: none; }
+
+/* Profil */
+.profile-identity { display: flex; align-items: center; gap: 18px; }
+.profile-identity .hint { margin-top: 4px; }
+.profile-columns { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr); gap: 20px; align-items: start; }
+.profile-section { display: grid; gap: 12px; padding: 16px 0; border-top: 1px solid #F3F0EE; }
+.panel > .profile-section:first-child, .panel .panel-head + .profile-section { border-top: 0; padding-top: 0; }
+.profile-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.profile-section-head h4 { margin: 0; font-size: 14px; }
+.profile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 20px; }
+.profile-field { display: grid; gap: 3px; min-width: 0; }
+.profile-field.is-wide { grid-column: 1 / -1; }
+.profile-field > span { font-size: 12px; font-weight: 600; color: #6E6E74; }
+.profile-field > strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.profile-field input, .profile-field select { padding: 8px 10px; border: 1px solid #D8D3CF; border-radius: 7px; font: inherit; font-size: 14px; font-weight: 500; background: #FFFFFF; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.rights-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rights-list li { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid #EEEAE7; border-radius: 8px; font-size: 14px; }
+
+/* Gruppen */
+.check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.check-grid .app-check { grid-template-columns: auto minmax(0, 1fr); }
+.member-grid { max-height: 260px; overflow-y: auto; }
+.via-group { margin-top: 4px; font-size: 11px; font-weight: 600; color: #4A53C4; }
+
+@media (max-width: 900px) {
+  .profile-columns { grid-template-columns: minmax(0, 1fr); }
+}

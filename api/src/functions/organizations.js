@@ -57,6 +57,71 @@ app.http('organizationUserPermissions', {
   })),
 });
 
+// ---------- Gruppen ----------
+
+app.http('organizationGroups', {
+  methods: ['GET', 'POST'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/groups',
+  handler: endpoint(async (request, ctx) => {
+    const { orgId } = request.params;
+    if (request.method === 'GET') return { jsonBody: await service.listGroups(ctx, orgId) };
+    return { status: 201, jsonBody: await service.createGroup(ctx, orgId, await readJson(request)) };
+  }),
+});
+
+// DELETE per POST .../delete, damit eine Support-Begründung sicher im Body ankommt.
+app.http('organizationGroup', {
+  methods: ['PATCH'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/groups/{groupId}',
+  handler: endpoint(async (request, ctx) => ({
+    jsonBody: await service.updateGroup(ctx, request.params.orgId, request.params.groupId, await readJson(request)),
+  })),
+});
+
+app.http('organizationGroupDelete', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/groups/{groupId}/delete',
+  handler: endpoint(async (request, ctx) => {
+    await service.deleteGroup(ctx, request.params.orgId, request.params.groupId, await readJson(request));
+    return { status: 204 };
+  }),
+});
+
+app.http('organizationUserGroups', {
+  methods: ['PUT'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/users/{userId}/groups',
+  handler: endpoint(async (request, ctx) => ({
+    jsonBody: await service.setUserGroups(ctx, request.params.orgId, request.params.userId, await readJson(request)),
+  })),
+});
+
+// ---------- Profile ----------
+
+app.http('organizationUserProfile', {
+  methods: ['GET', 'PUT'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/users/{userId}/profile',
+  handler: endpoint(async (request, ctx) => {
+    const { orgId, userId } = request.params;
+    if (request.method === 'GET') return { jsonBody: await service.getUserProfile(ctx, orgId, userId) };
+    return { jsonBody: await service.saveProfile(ctx, orgId, userId, await readJson(request)) };
+  }),
+});
+
+app.http('myProfile', {
+  methods: ['GET', 'PUT'],
+  authLevel: 'anonymous',
+  route: 'me/profile',
+  handler: endpoint(async (request, ctx) => {
+    if (request.method === 'GET') return { jsonBody: await service.getMyProfile(ctx) };
+    return { jsonBody: await service.saveMyProfile(ctx, await readJson(request)) };
+  }),
+});
+
 app.http('platformOrganizationModules', {
   methods: ['GET', 'PUT'],
   authLevel: 'anonymous',

@@ -6,12 +6,15 @@ import { Modal } from '../Admin';
 import { Badge, ErrorText, InviteResult, StatCard, STATUS_TONES } from '../ui';
 import OrganizationApps, { OrganizationModules } from './AppAccess';
 import Permissions from './Permissions';
+import Groups from './Groups';
+import Profile from './Profile';
 import Catalog from './Catalog';
 import { AUDIT_LABELS, INVITATION_STATUS_LABELS, ROLE_LABELS, USER_STATUS_LABELS, formatDate } from '../labels';
 
 const TABS = [
   { key: '', label: 'Übersicht' },
   { key: 'benutzer', label: 'Benutzer' },
+  { key: 'gruppen', label: 'Gruppen' },
   { key: 'rechte', label: 'Rechte' },
   { key: 'einladungen', label: 'Einladungen' },
   { key: 'katalog', label: 'App-Katalog' },
@@ -19,7 +22,7 @@ const TABS = [
 ];
 
 // Nur in der Plattform-Ansicht: KanzleiMind-Apps freischalten darf ausschließlich der Plattform-Admin.
-const PLATFORM_TABS = [...TABS.slice(0, 4), { key: 'freischaltung', label: 'Freischaltung' }, ...TABS.slice(4)];
+const PLATFORM_TABS = [...TABS.slice(0, 5), { key: 'freischaltung', label: 'Freischaltung' }, ...TABS.slice(5)];
 
 function InviteDialog({ orgId, onClose, onInvited }) {
   const [email, setEmail] = useState('');
@@ -133,12 +136,12 @@ export function AuditList({ entries }) {
   );
 }
 
-function UserRow({ user, isSelf, onChange, onRemove, busy }) {
+function UserRow({ user, isSelf, onChange, onRemove, busy, profileLink }) {
   const [confirm, setConfirm] = useState(false);
   return (
     <tr>
       <td>
-        <div className="cell-main">{user.displayName || '–'}{isSelf && <span className="you">Du</span>}</div>
+        <div className="cell-main">{profileLink ? <Link to={profileLink} className="cell-link">{user.displayName || '–'}</Link> : (user.displayName || '–')}{isSelf && <span className="you">Du</span>}</div>
       </td>
       <td>{user.email}</td>
       <td>
@@ -181,7 +184,7 @@ function InvitationActions({ invitation, busy, onResend, onRevoke }) {
   );
 }
 
-function Users({ users, invitations, me, busyId, onChangeUser, onRemoveUser, onResend, onRevoke, onInvite }) {
+function Users({ users, invitations, me, busyId, onChangeUser, onRemoveUser, onResend, onRevoke, onInvite, profileBase }) {
   const [filter, setFilter] = useState('all');
   const pending = invitations.filter(i => i.status === 'Pending');
   const rows = [
@@ -210,6 +213,7 @@ function Users({ users, invitations, me, busyId, onChangeUser, onRemoveUser, onR
                 key={row.item.id}
                 user={row.item}
                 isSelf={!!me.membership && me.membership.userId === row.item.id}
+                profileLink={profileBase ? `${profileBase}/${encodeURIComponent(row.item.id)}` : null}
                 busy={busyId === row.item.id}
                 onChange={patch => onChangeUser(row.item, patch)}
                 onRemove={() => onRemoveUser(row.item)}
@@ -320,7 +324,7 @@ function Settings({ org, onRenamed }) {
   );
 }
 
-export default function Organization({ orgId, tab, basePath, me, backLink, platformView }) {
+export default function Organization({ orgId, tab, subId, basePath, me, backLink, platformView }) {
   const [actionError, setActionError] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -359,6 +363,10 @@ export default function Organization({ orgId, tab, basePath, me, backLink, platf
     onInvite: () => setDialog({ kind: 'invite' }),
   };
 
+  if (subId && tab === 'benutzer' && !platformView) {
+    return <Profile orgId={orgId} userId={subId} backLink={<Link to={`${basePath}/benutzer`} className="back-link">← Alle Benutzer</Link>} />;
+  }
+
   if (error && !org) return <div className="page"><p className="page-error" role="alert">{error}</p></div>;
   if (!org) return <div className="page"><p className="hint">Wird geladen …</p></div>;
 
@@ -387,7 +395,7 @@ export default function Organization({ orgId, tab, basePath, me, backLink, platf
       <ErrorText error={actionError} />
 
       {active.key === '' && <Overview org={org} audit={audit} basePath={basePath} onInvite={handlers.onInvite} />}
-      {active.key === 'benutzer' && <Users users={users} invitations={invitations} me={me} busyId={busyId} {...handlers} />}
+      {active.key === 'benutzer' && <Users users={users} invitations={invitations} me={me} busyId={busyId} profileBase={platformView ? null : `${basePath}/benutzer`} {...handlers} />}
       {active.key === 'einladungen' && <Invitations invitations={invitations} busyId={busyId} {...handlers} />}
       {active.key === 'freischaltung' && (
         <div className="stack-lg">
@@ -396,6 +404,7 @@ export default function Organization({ orgId, tab, basePath, me, backLink, platf
         </div>
       )}
       {active.key === 'rechte' && <Permissions orgId={orgId} me={me} />}
+      {active.key === 'gruppen' && <Groups orgId={orgId} />}
       {active.key === 'katalog' && <Catalog orgId={orgId} />}
       {active.key === 'einstellungen' && <Settings org={org} onRenamed={load} />}
 

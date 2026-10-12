@@ -13,6 +13,7 @@ import PlatformApps from './pages/PlatformApps';
 import MyAppsDialog from './pages/MyApps';
 import AppViewer from './pages/AppViewer';
 import Shell from './Shell';
+import Profile from './pages/Profile';
 
 function GearIcon() {
   return (
@@ -239,10 +240,15 @@ function App() {
   } else if (Object.prototype.hasOwnProperty.call(UPCOMING, segments[0] || '')) {
     section = segments[0];
     page = <ComingSoon section={segments[0]} />;
+  } else if (segments[0] === 'profil') {
+    section = 'profil';
+    page = membership && !blocked
+      ? <Profile />
+      : <Notice title="Mein Profil"><p>Ein Profil gibt es für Mitglieder einer Organisation.</p><p className="hint">{me.email}</p><p><a className="btn" href={LOGOUT_URL}>Abmelden</a></p></Notice>;
   } else if (segments[0] === 'organisation') {
     section = 'org';
     if (!orgAdmin) page = <Notice title="Kein Zugriff"><p>Die Benutzerverwaltung steht nur Organization Admins zur Verfügung.</p></Notice>;
-    else page = <Organization key={me.membership.organizationId} orgId={me.membership.organizationId} tab={segments[1]} basePath="/organisation" me={me} />;
+    else page = <Organization key={me.membership.organizationId} orgId={me.membership.organizationId} tab={segments[1]} subId={segments[2]} basePath="/organisation" me={me} />;
   } else if (segments[0] === 'plattform') {
     section = 'platform';
     if (!platformAdmin) page = <Notice title="Kein Zugriff"><p>Dieser Bereich ist der Plattform-Verwaltung vorbehalten.</p></Notice>;

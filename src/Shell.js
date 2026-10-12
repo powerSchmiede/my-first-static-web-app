@@ -1,6 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { Link } from './router';
-import { LOGOUT_URL } from './api';
 
 const ICONS = {
   apps: 'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z',
@@ -35,38 +34,12 @@ function initials(me) {
   return ((parts[0] || '?')[0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
 }
 
-function UserMenu({ me }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    const onKey = e => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
+// Runder Avatar unten in der Rail: öffnet das eigene Profil (dort auch Abmelden).
+function UserMenu({ me, active }) {
   return (
-    <div className="user-menu" ref={ref}>
-      <button type="button" className="avatar" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(o => !o)} title={me.email}>
-        {initials(me)}
-      </button>
-      {open && (
-        <div className="user-popover" role="menu">
-          <div className="user-popover-head">
-            <strong>{me.name || me.email}</strong>
-            <span>{me.email}</span>
-            {me.membership && <span className="user-popover-org">{me.membership.organizationName}</span>}
-          </div>
-          <a className="user-popover-item" role="menuitem" href={LOGOUT_URL}>Abmelden</a>
-        </div>
-      )}
-    </div>
+    <Link to="/profil" className={`avatar ${active ? 'is-active' : ''}`} title={`${me.email} – Mein Profil`} aria-label="Mein Profil" aria-current={active ? 'page' : undefined}>
+      {initials(me)}
+    </Link>
   );
 }
 
@@ -88,7 +61,7 @@ export default function Shell({ me, section, items, children }) {
             </li>
           ))}
         </ul>
-        <UserMenu me={me} />
+        <UserMenu me={me} active={section === 'profil'} />
       </nav>
       <div className="shell-content">{children}</div>
     </div>

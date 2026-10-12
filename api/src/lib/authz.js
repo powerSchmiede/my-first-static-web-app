@@ -17,6 +17,7 @@ const PERMISSIONS = {
   'apps.use': ['OrgAdmin', 'OrgUser'],
   'catalog.manage': ['OrgAdmin'],
   'permissions.manage': ['OrgAdmin'],
+  'groups.manage': ['OrgAdmin'],
 };
 
 function isValidRole(role) {

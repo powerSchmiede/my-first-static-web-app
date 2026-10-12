@@ -78,7 +78,20 @@ export const setUserPermissions = (orgId, userId, permissions, reason) =>
   request('PUT', `/api/orgs/${enc(orgId)}/users/${enc(userId)}/permissions`, { permissions, ...(reason ? { reason } : {}) });
 export const getOrganizationModules = orgId => request('GET', `/api/platform/orgs/${enc(orgId)}/modules`);
 export const setOrganizationModules = (orgId, modules) => request('PUT', `/api/platform/orgs/${enc(orgId)}/modules`, { modules });
-export const checkModule = key => request('GET', `/api/modules/${enc(key)}`);
+// Gruppen (Body bei Support mit Begründung)
+export const createGroup = (orgId, data) => request('POST', `/api/orgs/${enc(orgId)}/groups`, data);
+export const updateGroup = (orgId, groupId, data) => request('PATCH', `/api/orgs/${enc(orgId)}/groups/${enc(groupId)}`, data);
+export const deleteGroup = (orgId, groupId, reason) => request('POST', `/api/orgs/${enc(orgId)}/groups/${enc(groupId)}/delete`, reason ? { reason } : {});
+export const setUserGroups = (orgId, userId, groupIds, reason) =>
+  request('PUT', `/api/orgs/${enc(orgId)}/users/${enc(userId)}/groups`, { groupIds, ...(reason ? { reason } : {}) });
+
+// Profile
+export const fetchMyProfile = () => request('GET', '/api/me/profile');
+export const saveMyProfile = data => request('PUT', '/api/me/profile', data);
+export const fetchUserProfile = (orgId, userId) => request('GET', `/api/orgs/${enc(orgId)}/users/${enc(userId)}/profile`);
+export const saveUserProfile = (orgId, userId, data) => request('PUT', `/api/orgs/${enc(orgId)}/users/${enc(userId)}/profile`, data);
+
+export const checkModule = key =>request('GET', `/api/modules/${enc(key)}`);
 
 export const deleteOrganization =(orgId, confirmName) => request('POST', `/api/platform/orgs/${enc(orgId)}/delete`, { confirmName });
 export const listPlatformAudit =() => request('GET', '/api/platform/audit');

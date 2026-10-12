@@ -45,6 +45,7 @@ function toUser(entity) {
     invitedBy: entity.invitedBy || '',
     lastLoginAt: entity.lastLoginAt || '',
     permissions: parseList(entity.permissions),
+    groups: parseList(entity.groups),
   };
 }
 
@@ -80,6 +81,8 @@ async function updateUser(organizationId, userId, patch) {
   if (patch.role !== undefined) changes.role = patch.role;
   if (patch.lastLoginAt !== undefined) changes.lastLoginAt = patch.lastLoginAt;
   if (patch.permissions !== undefined) changes.permissions = JSON.stringify(validatePermissions(patch.permissions));
+  if (patch.groups !== undefined) changes.groups = JSON.stringify(patch.groups);
+  if (patch.displayName !== undefined) changes.displayName = String(patch.displayName).slice(0, 120);
   try {
     await client.updateEntity({ partitionKey: organizationId, rowKey: entity.rowKey, ...changes }, 'Merge', { etag: entity.etag });
   } catch (e) {

@@ -9,6 +9,8 @@ const store = require('./store');
 const appAccess = require('./appAccess');
 const catalog = require('./catalog');
 const permissions = require('./permissions');
+const groups = require('./groups');
+const profiles = require('./profiles');
 
 const INVITES_PER_HOUR = 50;
 
@@ -126,6 +128,7 @@ async function removeUser(ctx, organizationId, userId) {
   }
   await members.deleteUser(organizationId, userId);
   await catalog.purgeUser(organizationId, userId);
+  await profiles.remove(organizationId, userId);
   await audit.record(ctx, { organizationId, action: 'user.removed', targetType: 'user', targetId: userId, details: { email: user.email, role: user.role } });
 }
 
@@ -499,12 +502,18 @@ function requireReason(ctx, organizationId, reason) {
 
 async function getPermissions(ctx, organizationId) {
   authorizeOrg(ctx, organizationId, 'permissions.manage');
-  const [organization, users] = await Promise.all([organizations.getOrThrow(organizationId), members.listUsers(organizationId)]);
+  const [organization, users, orgGroups] = await Promise.all([organizations.getOrThrow(organizationId), members.listUsers(organizationId), groups.list(organizationId)]);
   return {
     catalog: permissions.CATALOG.map(p => ({ ...p, licensed: organization.modules.includes(p.module) })),
     modules: organization.modules,
     support: isSupport(ctx, organizationId),
-    users: users.map(u => ({ id: u.id, email: u.email, displayName: u.displayName, role: u.role, status: u.status, permissions: u.permissions })),
+    groups: orgGroups,
+    users: users.map(u => ({
+      id: u.id, email: u.email, displayName: u.displayName, role: u.role, status: u.status,
+      permissions: u.permissions,
+      groups: u.groups.filter(id => orgGroups.some(g => g.id === id)),
+      inherited: groups.inheritedPermissions(u.groups, orgGroups),
+    })),
   };
 }
 
@@ -534,6 +543,165 @@ async function setUserPermissions(ctx, organizationId, userId, input) {
     details: { email: user.email, added: added.map(label), removed: removed.map(label), ...(reason ? { reason } : {}) },
   });
   return { id: updated.id, permissions: updated.permissions };
+}
+
+// ---------- Gruppen ----------
+
+const permissionLabel = key => (permissions.CATALOG.find(p => p.key === key) || { label: key }).label;
+
+function assertLicensed(organization, list) {
+  if (list.some(p => !organization.modules.includes(permissions.moduleOf(p)))) {
+    throw new HttpError(400, 'Dieser Bereich ist für eure Organisation nicht freigeschaltet.', 'not_licensed');
+  }
+}
+
+async function listGroups(ctx, organizationId) {
+  authorizeOrg(ctx, organizationId, 'groups.manage');
+  const [orgGroups, users] = await Promise.all([groups.list(organizationId), members.listUsers(organizationId)]);
+  return orgGroups.map(g => ({ ...g, members: users.filter(u => u.groups.includes(g.id)).map(u => u.id) }));
+}
+
+async function createGroup(ctx, organizationId, input) {
+  authorizeOrg(ctx, organizationId, 'groups.manage');
+  const reason = requireReason(ctx, organizationId, input && input.reason);
+  const organization = await organizations.getOrThrow(organizationId);
+  const wanted = input && input.permissions ? permissions.validatePermissions(input.permissions) : [];
+  assertLicensed(organization, wanted);
+  const group = await groups.create(organizationId, { name: input && input.name, permissions: wanted });
+  await audit.record(ctx, { organizationId, action: 'group.created', targetType: 'group', targetId: group.id, details: { name: group.name, added: wanted.map(permissionLabel), ...(reason ? { reason } : {}) } });
+  return { ...group, members: [] };
+}
+
+async function updateGroup(ctx, organizationId, groupId, input) {
+  authorizeOrg(ctx, organizationId, 'groups.manage');
+  const reason = requireReason(ctx, organizationId, input && input.reason);
+  const organization = await organizations.getOrThrow(organizationId);
+  const patchInput = {};
+  if (input && input.name !== undefined) patchInput.name = input.name;
+  if (input && input.permissions !== undefined) patchInput.permissions = permissions.validatePermissions(input.permissions);
+  const existing = await groups.get(organizationId, groupId);
+  if (!existing) throw new HttpError(404, 'Nicht gefunden.');
+  if (patchInput.permissions) assertLicensed(organization, patchInput.permissions.filter(p => !existing.group.permissions.includes(p)));
+  const { before, after } = await groups.update(organizationId, groupId, patchInput);
+  const added = after.permissions.filter(p => !before.permissions.includes(p)).map(permissionLabel);
+  const removed = before.permissions.filter(p => !after.permissions.includes(p)).map(permissionLabel);
+  await audit.record(ctx, {
+    organizationId, action: 'group.updated', targetType: 'group', targetId: groupId,
+    details: { name: after.name, ...(before.name !== after.name ? { renamedFrom: before.name } : {}), added, removed, ...(reason ? { reason } : {}) },
+  });
+  return after;
+}
+
+async function deleteGroup(ctx, organizationId, groupId, input) {
+  authorizeOrg(ctx, organizationId, 'groups.manage');
+  const reason = requireReason(ctx, organizationId, input && input.reason);
+  const group = await groups.remove(organizationId, groupId);
+  // Zugehörigkeit bei allen Benutzern entfernen, damit keine Rechte aus einer gelöschten Gruppe bleiben.
+  for (const user of await members.listUsers(organizationId)) {
+    if (user.groups.includes(groupId)) await members.updateUser(organizationId, user.id, { groups: user.groups.filter(id => id !== groupId) });
+  }
+  await audit.record(ctx, { organizationId, action: 'group.deleted', targetType: 'group', targetId: groupId, details: { name: group.name, ...(reason ? { reason } : {}) } });
+}
+
+async function setUserGroups(ctx, organizationId, userId, input) {
+  authorizeOrg(ctx, organizationId, 'groups.manage');
+  const reason = requireReason(ctx, organizationId, input && input.reason);
+  const wanted = input && Array.isArray(input.groupIds) && input.groupIds.every(id => typeof id === 'string') ? [...new Set(input.groupIds)] : null;
+  if (!wanted || wanted.length > groups.MAX_GROUPS) throw new HttpError(400, 'Ungültige Gruppenauswahl.');
+  const [user, orgGroups] = await Promise.all([members.getUser(organizationId, userId), groups.list(organizationId)]);
+  if (!user) throw new HttpError(404, 'Nicht gefunden.');
+  // Nur Gruppen der eigenen Organisation – fremde IDs werden abgelehnt.
+  if (wanted.some(id => !orgGroups.some(g => g.id === id))) throw new HttpError(400, 'Unbekannte Gruppe.');
+  const name = id => orgGroups.find(g => g.id === id).name;
+  const current = user.groups.filter(id => orgGroups.some(g => g.id === id));
+  const added = wanted.filter(id => !current.includes(id)).map(name);
+  const removed = current.filter(id => !wanted.includes(id)).map(name);
+  if (!added.length && !removed.length) return { id: user.id, groups: current };
+  const updated = await members.updateUser(organizationId, userId, { groups: wanted });
+  await audit.record(ctx, { organizationId, action: 'user.groups_changed', targetType: 'user', targetId: userId, details: { email: user.email, added, removed, ...(reason ? { reason } : {}) } });
+  return { id: updated.id, groups: updated.groups };
+}
+
+// ---------- Profile ----------
+
+// Kontaktdaten: der Benutzer selbst, Org-Admins und Benutzer mit Recht "Lohn" derselben Organisation.
+// Lohndaten: nur der Benutzer selbst und Benutzer mit Recht "Lohn". KanzleiMind-Support nie.
+function profileAccess(ctx, organizationId, userId) {
+  requireAuthenticated(ctx);
+  const m = activeMembership(ctx);
+  if (!m || m.organizationId !== organizationId) {
+    throw new AccessDenied(isSupport(ctx, organizationId) ? 403 : 404, isSupport(ctx, organizationId) ? 'Profildaten sind für den Support nicht einsehbar.' : 'Nicht gefunden.', { reason: 'profile_foreign', userId });
+  }
+  const self = m.userId === userId;
+  const payrollRole = m.permissions.includes('module.lohn');
+  const admin = m.role === 'OrgAdmin';
+  if (!self && !payrollRole && !admin) throw new AccessDenied(403, 'Dafür fehlt dir die Berechtigung.', { reason: 'profile_forbidden', userId });
+  return { self, contact: true, payroll: self || payrollRole };
+}
+
+async function buildProfile(ctx, organizationId, userId, access) {
+  const user = await members.getUser(organizationId, userId);
+  if (!user) throw new HttpError(404, 'Nicht gefunden.');
+  const [orgGroups, organization, data] = await Promise.all([
+    groups.list(organizationId),
+    organizations.getOrThrow(organizationId),
+    profiles.getProfile(organizationId, userId, { includePayroll: access.payroll }),
+  ]);
+  const inherited = groups.inheritedPermissions(user.groups, orgGroups);
+  const effective = permissions.effectivePermissions([...new Set([...user.permissions, ...inherited])], organization.modules);
+  return {
+    user: { id: user.id, email: user.email, displayName: user.displayName, role: user.role, status: user.status, organizationName: organization.name },
+    groups: orgGroups.filter(g => user.groups.includes(g.id)).map(g => ({ id: g.id, name: g.name })),
+    permissions: effective.map(key => ({
+      key,
+      label: permissionLabel(key),
+      sources: [...(user.permissions.includes(key) ? ['direkt'] : []), ...orgGroups.filter(g => user.groups.includes(g.id) && g.permissions.includes(key)).map(g => `Gruppe ${g.name}`)],
+    })),
+    contact: data.contact,
+    payroll: data.payroll,
+    payrollConfigured: data.payrollConfigured,
+    canViewPayroll: access.payroll,
+    canEdit: { contact: access.self || ctx.membership.permissions.includes('module.lohn'), payroll: access.payroll },
+    updatedAt: data.updatedAt,
+  };
+}
+
+async function getMyProfile(ctx) {
+  const m = requireMember(ctx);
+  return buildProfile(ctx, m.organizationId, m.userId, profileAccess(ctx, m.organizationId, m.userId));
+}
+
+async function getUserProfile(ctx, organizationId, userId) {
+  return buildProfile(ctx, organizationId, userId, profileAccess(ctx, organizationId, userId));
+}
+
+async function saveProfile(ctx, organizationId, userId, input) {
+  const access = profileAccess(ctx, organizationId, userId);
+  const canEditContact = access.self || ctx.membership.permissions.includes('module.lohn');
+  if (!(await members.getUser(organizationId, userId))) throw new HttpError(404, 'Nicht gefunden.');
+  const changed = [];
+  if (input && input.contact) {
+    if (!canEditContact) throw new AccessDenied(403, 'Kontaktdaten darf nur die Person selbst oder die Lohnbuchhaltung ändern.', { reason: 'profile_contact_forbidden', userId });
+    changed.push(...(await profiles.saveContact(organizationId, userId, input.contact)));
+    // Vor- und Nachname werden zum Anzeigenamen in Listen und Protokollen.
+    const { contact } = await profiles.getProfile(organizationId, userId, { includePayroll: false });
+    const fullName = [contact.firstName, contact.lastName].filter(Boolean).join(' ');
+    if (fullName) await members.updateUser(organizationId, userId, { displayName: fullName });
+  }
+  if (input && input.payroll) {
+    if (!access.payroll) throw new AccessDenied(403, 'Lohndaten darf nur die Person selbst oder die Lohnbuchhaltung ändern.', { reason: 'profile_payroll_forbidden', userId });
+    changed.push(...(await profiles.savePayroll(organizationId, userId, input.payroll)));
+  }
+  // Protokolliert wird nur, welche Felder sich geändert haben – nie die Werte.
+  if (changed.length) {
+    await audit.record(ctx, { organizationId, action: 'profile.updated', targetType: 'user', targetId: userId, details: { fields: changed, ...(access.self ? {} : { by: 'Lohnbuchhaltung/Admin' }) } });
+  }
+  return buildProfile(ctx, organizationId, userId, access);
+}
+
+async function saveMyProfile(ctx, input) {
+  const m = requireMember(ctx);
+  return saveProfile(ctx, m.organizationId, m.userId, input);
 }
 
 async function getOrganizationModules(ctx, organizationId) {
@@ -605,6 +773,15 @@ module.exports = {
   getOrganizationModules,
   setOrganizationModules,
   checkModuleAccess,
+  listGroups,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  setUserGroups,
+  getMyProfile,
+  getUserProfile,
+  saveMyProfile,
+  saveProfile,
   listPlatformAudit,
   listVisibleApps,
   myApps,

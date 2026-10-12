@@ -69,7 +69,7 @@ export default function Permissions({ orgId, me }) {
       <div className="panel stack">
         <div>
           <h3>Rechte der Benutzer</h3>
-          <p className="hint">Lege fest, wer welchen Bereich öffnen darf. Auch Organization Admins brauchen das jeweilige Recht. Änderungen werden sofort gespeichert und protokolliert.</p>
+          <p className="hint">Lege fest, wer welchen Bereich öffnen darf. Auch Organization Admins brauchen das jeweilige Recht. Rechte aus Gruppen sind mit „über …“ gekennzeichnet und werden im Reiter „Gruppen“ verwaltet. Änderungen werden sofort gespeichert und protokolliert.</p>
         </div>
         <ErrorText error={error} />
         {!licensed.length ? (
@@ -92,12 +92,14 @@ export default function Permissions({ orgId, me }) {
                     </td>
                     {licensed.map(p => {
                       const granted = user.permissions.includes(p.key);
+                      const viaGroups = (data.groups || []).filter(g => user.groups.includes(g.id) && g.permissions.includes(p.key)).map(g => g.name);
                       return (
                         <td key={p.key} className="cell-switch">
                           <label className="switch" title={`${p.label} für ${user.email}`}>
                             <input type="checkbox" checked={granted} disabled={busy === `${user.id}:${p.key}`} onChange={e => toggle(user, p.key, e.target.checked)} aria-label={`${p.label} für ${user.email}`} />
                             <span className="switch-track" aria-hidden="true" />
                           </label>
+                          {viaGroups.length > 0 && <div className="via-group" title="Recht aus Gruppe">über {viaGroups.join(', ')}</div>}
                         </td>
                       );
                     })}

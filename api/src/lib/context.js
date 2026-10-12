@@ -4,6 +4,7 @@ const organizations = require('./organizations');
 const members = require('./members');
 const audit = require('./audit');
 const { effectivePermissions } = require('./permissions');
+const groups = require('./groups');
 
 const LAST_LOGIN_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -99,6 +100,9 @@ async function resolveContext(request) {
       organizations.get(index.organizationId),
     ]);
     if (user && organization && user.identityId === principal.identityId) {
+      const orgGroups = user.groups.length ? await groups.list(organization.id) : [];
+      const inherited = groups.inheritedPermissions(user.groups, orgGroups);
+      const active = user.status === 'Active' && organization.status === 'Active';
       membership = {
         organizationId: organization.id,
         organizationName: organization.name,
@@ -108,7 +112,8 @@ async function resolveContext(request) {
         status: user.status,
         modules: organization.modules,
         // Nur wirksame Rechte: freigeschalteter Bereich und Recht am Benutzer
-        permissions: user.status === 'Active' && organization.status === 'Active' ? effectivePermissions(user.permissions, organization.modules) : [],
+        permissions: active ? effectivePermissions([...new Set([...user.permissions, ...inherited])], organization.modules) : [],
+        groups: orgGroups.filter(g => user.groups.includes(g.id)).map(g => ({ id: g.id, name: g.name })),
       };
       const last = user.lastLoginAt ? Date.parse(user.lastLoginAt) : 0;
       if (Date.now() - last > LAST_LOGIN_INTERVAL_MS) {

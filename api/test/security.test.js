@@ -11,6 +11,7 @@ const run = crypto.randomUUID().slice(0, 8);
 const PLATFORM_EMAIL = `owner-${run}@platform.test`;
 process.env.PLATFORM_ADMIN_EMAILS = PLATFORM_EMAIL;
 delete process.env.ACS_CONNECTION_STRING;
+process.env.PROFILE_ENCRYPTION_KEY = crypto.randomBytes(32).toString('base64');
 
 const functions = require('@azure/functions');
 const routes = [];
@@ -609,4 +610,135 @@ test('Deaktivierte Benutzer verlieren den Zugriff auf Bereiche', async () => {
   assert.equal((await call('GET', 'modules/fibu', { as: erin })).status, 403);
   await call('PATCH', `orgs/${state.orgA}/users/${erinId}`, { as: alice, body: { status: 'Active' } });
   assert.equal((await call('GET', 'modules/fibu', { as: erin })).status, 200);
+});
+
+
+// ---------- Gruppen ----------
+
+async function joinOrgA(name) {
+  const person = principal(name, `${name}-${run}@a.test`);
+  const invite = await call('POST', `orgs/${state.orgA}/invitations`, { as: alice, body: { email: person.userDetails, role: 'OrgUser' } });
+  assert.equal((await call('POST', 'invitations/accept', { as: person, body: { token: tokenOf(invite) } })).status, 200);
+  return { person, id: await userIdOf(person) };
+}
+
+test('Gruppen vererben Rechte an ihre Mitglieder', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const { person: hans, id: hansId } = await joinOrgA('hans');
+
+  assert.equal((await call('POST', `orgs/${state.orgA}/groups`, { as: erin, body: { name: 'Lohn' } })).status, 403);
+  assert.equal((await call('POST', `orgs/${state.orgA}/groups`, { as: bob, body: { name: 'Lohn' } })).status, 404);
+  // Nicht freigeschaltete Bereiche können auch Gruppen nicht tragen.
+  assert.equal((await call('POST', `orgs/${state.orgA}/groups`, { as: alice, body: { name: 'Doku', permissions: ['module.dokumente'] } })).body.code, 'not_licensed');
+
+  const group = await call('POST', `orgs/${state.orgA}/groups`, { as: alice, body: { name: 'Lohn', permissions: ['module.lohn'] } });
+  assert.equal(group.status, 201);
+  assert.equal((await call('POST', `orgs/${state.orgA}/groups`, { as: alice, body: { name: 'lohn' } })).status, 409);
+
+  assert.equal((await call('GET', 'modules/lohn', { as: hans })).status, 403);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${hansId}/groups`, { as: alice, body: { groupIds: [group.body.id] } })).status, 200);
+  assert.equal((await call('GET', 'modules/lohn', { as: hans })).status, 200);
+  assert.deepEqual((await call('GET', 'me', { as: hans })).body.membership.groups.map(g => g.name), ['Lohn']);
+
+  // Recht aus der Gruppe entfernen wirkt sofort für alle Mitglieder.
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/groups/${group.body.id}`, { as: alice, body: { permissions: [] } })).status, 200);
+  assert.equal((await call('GET', 'modules/lohn', { as: hans })).status, 403);
+  await call('PATCH', `orgs/${state.orgA}/groups/${group.body.id}`, { as: alice, body: { permissions: ['module.lohn'] } });
+
+  // Gelöschte Gruppen hinterlassen keine Rechte.
+  assert.equal((await call('POST', `orgs/${state.orgA}/groups/${group.body.id}/delete`, { as: alice, body: {} })).status, 204);
+  assert.equal((await call('GET', 'modules/lohn', { as: hans })).status, 403);
+  assert.deepEqual((await call('GET', 'me', { as: hans })).body.membership.groups, []);
+  state.hans = { person: hans, id: hansId };
+});
+
+test('Gruppen fremder Organisationen lassen sich nicht zuweisen', async () => {
+  const foreign = await call('POST', `orgs/${state.orgB}/groups`, { as: bob, body: { name: 'IT' } });
+  assert.equal(foreign.status, 201);
+  // Org-A-Admin kann keine Org-B-Gruppe vergeben, Bob keine Gruppe an Org-A-Benutzer.
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${state.hans.id}/groups`, { as: alice, body: { groupIds: [foreign.body.id] } })).status, 400);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${state.hans.id}/groups`, { as: bob, body: { groupIds: [] } })).status, 404);
+  assert.equal((await call('PATCH', `orgs/${state.orgA}/groups/${foreign.body.id}`, { as: alice, body: { name: 'gekapert' } })).status, 404);
+  assert.equal((await call('PATCH', `orgs/${state.orgB}/groups/${foreign.body.id}`, { as: alice, body: { name: 'gekapert' } })).status, 404);
+});
+
+test('Support ändert Gruppen nur mit Begründung', async () => {
+  assert.equal((await call('POST', `orgs/${state.orgA}/groups`, { as: owner, body: { name: 'HR' } })).body.code, 'reason_required');
+  const created = await call('POST', `orgs/${state.orgA}/groups`, { as: owner, body: { name: 'HR', reason: 'Ticket #7' } });
+  assert.equal(created.status, 201);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${state.hans.id}/groups`, { as: owner, body: { groupIds: [created.body.id] } })).body.code, 'reason_required');
+});
+
+// ---------- Profile ----------
+
+const PAYROLL = { taxId: '12345678901', taxClass: '1', iban: 'DE89 3704 0044 0532 0130 00', socialSecurityNumber: '12 345678 A 123', birthDate: '1990-05-17', zip: '80331', weeklyHours: '38.5' };
+
+test('Profil: eigene Daten pflegen, Lohndaten werden verschlüsselt gespeichert', async () => {
+  const { person: hans, id: hansId } = state.hans;
+  const empty = await call('GET', 'me/profile', { as: hans });
+  assert.equal(empty.status, 200);
+  assert.equal(empty.body.canViewPayroll, true);
+  assert.equal(empty.body.payroll.taxId, '');
+
+  assert.equal((await call('PUT', 'me/profile', { as: hans, body: { payroll: { iban: 'DE00 1234 5678 9012 3456 78' } } })).status, 400);
+  assert.equal((await call('PUT', 'me/profile', { as: hans, body: { payroll: { taxId: '123' } } })).status, 400);
+  assert.equal((await call('PUT', 'me/profile', { as: hans, body: { payroll: { birthDate: '2999-01-01' } } })).status, 400);
+
+  const saved = await call('PUT', 'me/profile', { as: hans, body: { contact: { firstName: 'Hans', lastName: 'Muster', phone: '+49 89 123456' }, payroll: PAYROLL } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.payroll.iban, 'DE89370400440532013000');
+  assert.equal(saved.body.payroll.socialSecurityNumber, '12345678A123');
+  assert.equal(saved.body.user.displayName, 'Hans Muster');
+
+  // In der Datenbank steht kein Klartext.
+  const { table } = require('../src/lib/tables');
+  const raw = await (await table('orgData')).getEntity(state.orgA, `prof_${hansId}`);
+  assert.match(raw.payroll, /^v1:/);
+  assert.ok(!JSON.stringify(raw).includes('12345678901') && !JSON.stringify(raw).includes('DE89370400440532013000'));
+
+  // Protokoll nennt Felder, nie Werte.
+  const log = await call('GET', `orgs/${state.orgA}/audit`, { as: alice });
+  const entry = log.body.find(e => e.action === 'profile.updated' && e.targetId === hansId);
+  assert.ok(entry.details.fields.includes('IBAN'));
+  assert.ok(!JSON.stringify(log.body).includes('DE89370400440532013000'));
+});
+
+test('Profil: Lohndaten nur für die Person und Benutzer mit Recht Lohn, nie für Support oder fremde Orgs', async () => {
+  const { id: hansId } = state.hans;
+  const aliceId = await userIdOf(alice);
+
+  // Kollegin ohne Recht: kein Zugriff.
+  const { person: ida } = await joinOrgA('ida');
+  assert.equal((await call('GET', `orgs/${state.orgA}/users/${hansId}/profile`, { as: ida })).status, 403);
+  // Org-Admin ohne Recht Lohn: Kontaktdaten ja, Lohndaten nein.
+  await call('PUT', `orgs/${state.orgA}/users/${aliceId}/permissions`, { as: alice, body: { permissions: [] } });
+  const asAdmin = await call('GET', `orgs/${state.orgA}/users/${hansId}/profile`, { as: alice });
+  assert.equal(asAdmin.status, 200);
+  assert.equal(asAdmin.body.contact.firstName, 'Hans');
+  assert.equal(asAdmin.body.payroll, null);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${hansId}/profile`, { as: alice, body: { payroll: { taxClass: '3' } } })).status, 403);
+  // Mit Recht Lohn: Lohndaten sichtbar und änderbar.
+  await call('PUT', `orgs/${state.orgA}/users/${aliceId}/permissions`, { as: alice, body: { permissions: ['module.lohn'] } });
+  const asPayroll = await call('GET', `orgs/${state.orgA}/users/${hansId}/profile`, { as: alice });
+  assert.equal(asPayroll.body.payroll.taxId, '12345678901');
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${hansId}/profile`, { as: alice, body: { payroll: { taxClass: '3' } } })).status, 200);
+
+  // Support und fremde Organisationen: kein Zugriff.
+  assert.equal((await call('GET', `orgs/${state.orgA}/users/${hansId}/profile`, { as: owner })).status, 403);
+  assert.equal((await call('GET', `orgs/${state.orgA}/users/${hansId}/profile`, { as: bob })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgB}/users/${hansId}/profile`, { as: bob })).status, 404);
+});
+
+test('Profil: ohne Schlüssel keine Lohndaten, beim Entfernen des Benutzers wird das Profil gelöscht', async () => {
+  const { person: hans, id: hansId } = state.hans;
+  const savedKey = process.env.PROFILE_ENCRYPTION_KEY;
+  delete process.env.PROFILE_ENCRYPTION_KEY;
+  const res = await call('PUT', 'me/profile', { as: hans, body: { payroll: { taxClass: '1' } } });
+  assert.equal(res.status, 503);
+  assert.equal((await call('GET', 'me/profile', { as: hans })).body.payroll, null);
+  process.env.PROFILE_ENCRYPTION_KEY = savedKey;
+
+  assert.equal((await call('DELETE', `orgs/${state.orgA}/users/${hansId}`, { as: alice })).status, 204);
+  const { table } = require('../src/lib/tables');
+  await assert.rejects((await table('orgData')).getEntity(state.orgA, `prof_${hansId}`));
 });
