@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import logo from './assets/kanzleimind-logo.png';
 import Tile from './Tile';
-import { fetchApps, fetchMe, getOrganizationOverview, LOGIN_URL, LOGOUT_URL, PROVIDERS } from './api';
+import { checkModule, fetchApps, fetchMe, getOrganizationOverview, LOGIN_URL, LOGOUT_URL, PROVIDERS } from './api';
 import { prefetch, useCached } from './cache';
 import { MicrosoftIcon } from './ui';
 import { Link, usePath } from './router';
@@ -96,6 +96,26 @@ const UPCOMING = {
 
 function ComingSoon({ section }) {
   const info = UPCOMING[section];
+  const [access, setAccess] = useState(null); // null = wird geprüft, true/false, oder Fehlertext
+
+  useEffect(() => {
+    let active = true;
+    setAccess(null);
+    checkModule(section)
+      .then(() => { if (active) setAccess(true); })
+      .catch(err => { if (active) setAccess(err.status === 403 ? false : err.message); });
+    return () => { active = false; };
+  }, [section]);
+
+  if (access === null) return <div className="page"><p className="hint">Wird geladen …</p></div>;
+  if (access !== true) {
+    return (
+      <Notice title={info.title}>
+        <p>{access === false ? 'Für diesen Bereich hast du keine Berechtigung.' : access}</p>
+        <p className="hint">Wende dich an den Administrator deiner Organisation, wenn du Zugriff benötigst.</p>
+      </Notice>
+    );
+  }
   return (
     <div className="page">
       <div className="page-head">
@@ -167,6 +187,12 @@ function App() {
 
   useEffect(() => { loadMe(); }, [loadMe]);
 
+  // Andere Seiten melden geänderte eigene Rechte, damit die Navigation aktuell bleibt.
+  useEffect(() => {
+    window.addEventListener('km:refresh-me', loadMe);
+    return () => window.removeEventListener('km:refresh-me', loadMe);
+  }, [loadMe]);
+
   const signedIn = !!me && me.authenticated;
   const platformAdmin = signedIn && me.isPlatformAdmin;
   const orgAdmin = signedIn && isOrgAdmin(me);
@@ -231,9 +257,11 @@ function App() {
 
   if (signedIn) {
     const items = [{ key: 'apps', label: 'Apps', to: '/' }];
-    if ((membership && !blocked) || platformAdmin) {
-      Object.entries(UPCOMING).forEach(([key, info]) => items.push({ key, label: info.label, to: `/${key}` }));
-    }
+    // Nur Bereiche mit wirksamem Recht (Anzeige; geprüft wird auf dem Server)
+    const granted = membership && !blocked ? membership.permissions || [] : [];
+    Object.entries(UPCOMING).forEach(([key, info]) => {
+      if (granted.includes(`module.${key}`)) items.push({ key, label: info.label, to: `/${key}` });
+    });
     if (orgAdmin) items.push({ key: 'org', label: 'Organisation', shortLabel: 'Org.', to: '/organisation' });
     if (platformAdmin) items.push({ key: 'platform', label: 'Plattform', to: '/plattform' });
     return <Shell me={me} section={section} items={items}>{page}</Shell>;

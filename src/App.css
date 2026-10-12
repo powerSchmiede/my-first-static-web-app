@@ -698,6 +698,14 @@ a.tile:focus-visible {
 
 .filter-tabs button.is-active { background: #17171A; border-color: #17171A; color: #FFFFFF; }
 
+/* Rechte */
+.permission-table th:not(:first-child), .permission-table .cell-switch { text-align: center; }
+.permission-table .cell-switch .switch { justify-content: center; }
+.permission-table tr.is-muted td:first-child { opacity: .55; }
+.support-panel { border-left: 4px solid #D99A1E; }
+.module-row { grid-template-columns: minmax(0, 1fr) auto; }
+.audit-reason { display: block; font-size: 11px; color: #8A5A00; }
+
 /* Protokoll */
 .audit-list { list-style: none; margin: 0; padding: 0; display: grid; }
 

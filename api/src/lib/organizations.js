@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { table, getOrNull, listAll, odata } = require('./tables');
 const { HttpError } = require('./errors');
+const { validateModules, parseList } = require('./permissions');
 
 const PARTITION = 'org';
 const STATUSES = ['Active', 'Disabled'];
@@ -12,6 +13,7 @@ function toOrganization(entity) {
     status: entity.status,
     createdAt: entity.createdAt,
     createdBy: entity.createdBy || '',
+    modules: parseList(entity.modules),
   };
 }
 
@@ -68,6 +70,7 @@ async function update(organizationId, patch) {
     if (!STATUSES.includes(patch.status)) throw new HttpError(400, 'Unbekannter Status.');
     changes.status = patch.status;
   }
+  if (patch.modules !== undefined) changes.modules = JSON.stringify(validateModules(patch.modules));
   await client.updateEntity({ partitionKey: PARTITION, rowKey: organizationId, ...changes }, 'Merge', { etag: entity.etag });
   return toOrganization({ ...entity, ...changes });
 }

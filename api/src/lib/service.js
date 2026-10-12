@@ -8,6 +8,7 @@ const email = require('./email');
 const store = require('./store');
 const appAccess = require('./appAccess');
 const catalog = require('./catalog');
+const permissions = require('./permissions');
 
 const INVITES_PER_HOUR = 50;
 
@@ -480,6 +481,95 @@ async function deleteApp(ctx, appId) {
   await audit.record(ctx, { action: 'app.deleted', targetType: 'app', targetId: appId });
 }
 
+// ---------- Rechte ----------
+
+// Handelt ein Plattform-Admin in einer Organisation, der er nicht angehört, ist das Support.
+function isSupport(ctx, organizationId) {
+  return ctx.isPlatformAdmin && !(ctx.membership && ctx.membership.organizationId === organizationId);
+}
+
+function requireReason(ctx, organizationId, reason) {
+  if (!isSupport(ctx, organizationId)) return '';
+  const text = typeof reason === 'string' ? reason.trim() : '';
+  if (text.length < 3 || text.length > 300) {
+    throw new HttpError(400, 'Bitte gib als KanzleiMind-Support eine Begründung an (z. B. Ticketnummer).', 'reason_required');
+  }
+  return text;
+}
+
+async function getPermissions(ctx, organizationId) {
+  authorizeOrg(ctx, organizationId, 'permissions.manage');
+  const [organization, users] = await Promise.all([organizations.getOrThrow(organizationId), members.listUsers(organizationId)]);
+  return {
+    catalog: permissions.CATALOG.map(p => ({ ...p, licensed: organization.modules.includes(p.module) })),
+    modules: organization.modules,
+    support: isSupport(ctx, organizationId),
+    users: users.map(u => ({ id: u.id, email: u.email, displayName: u.displayName, role: u.role, status: u.status, permissions: u.permissions })),
+  };
+}
+
+async function setUserPermissions(ctx, organizationId, userId, input) {
+  authorizeOrg(ctx, organizationId, 'permissions.manage');
+  const reason = requireReason(ctx, organizationId, input && input.reason);
+  const wanted = permissions.validatePermissions(input && input.permissions);
+  const [organization, user] = await Promise.all([organizations.getOrThrow(organizationId), members.getUser(organizationId, userId)]);
+  if (!user) throw new HttpError(404, 'Nicht gefunden.');
+
+  const before = new Set(user.permissions);
+  const added = wanted.filter(p => !before.has(p));
+  const removed = user.permissions.filter(p => !wanted.includes(p));
+  // Neu vergeben werden kann nur, was für die Organisation freigeschaltet ist.
+  if (added.some(p => !organization.modules.includes(permissions.moduleOf(p)))) {
+    throw new HttpError(400, 'Dieser Bereich ist für eure Organisation nicht freigeschaltet.', 'not_licensed');
+  }
+  if (!added.length && !removed.length) return { id: user.id, permissions: user.permissions };
+
+  const updated = await members.updateUser(organizationId, userId, { permissions: wanted });
+  const label = key => (permissions.CATALOG.find(p => p.key === key) || { label: key }).label;
+  await audit.record(ctx, {
+    organizationId,
+    action: 'user.permissions_changed',
+    targetType: 'user',
+    targetId: userId,
+    details: { email: user.email, added: added.map(label), removed: removed.map(label), ...(reason ? { reason } : {}) },
+  });
+  return { id: updated.id, permissions: updated.permissions };
+}
+
+async function getOrganizationModules(ctx, organizationId) {
+  requirePlatformAdmin(ctx);
+  const organization = await organizations.getOrThrow(organizationId);
+  return { modules: organization.modules, available: permissions.MODULES };
+}
+
+async function setOrganizationModules(ctx, organizationId, modules) {
+  requirePlatformAdmin(ctx);
+  const before = await organizations.getOrThrow(organizationId);
+  const updated = await organizations.update(organizationId, { modules });
+  const title = key => (permissions.MODULES.find(m => m.key === key) || { title: key }).title;
+  const added = updated.modules.filter(m => !before.modules.includes(m)).map(title);
+  const removed = before.modules.filter(m => !updated.modules.includes(m)).map(title);
+  if (added.length || removed.length) {
+    const details = { name: updated.name, added, removed };
+    await audit.record(ctx, { organizationId, action: 'organization.modules_changed', targetType: 'organization', targetId: organizationId, details });
+    await audit.record(ctx, { action: 'organization.modules_changed', targetType: 'organization', targetId: organizationId, details });
+  }
+  return { modules: updated.modules, available: permissions.MODULES };
+}
+
+// Prüfung für Bereiche: nur wirksame Rechte des Benutzers in seiner eigenen Organisation.
+// Plattform-Admins erhalten bewusst keinen automatischen Zugriff auf Bereichsdaten.
+function checkModuleAccess(ctx, moduleKey) {
+  requireAuthenticated(ctx);
+  if (!permissions.MODULE_KEYS.includes(moduleKey)) throw new HttpError(404, 'Nicht gefunden.');
+  const membership = ctx.membership;
+  const permission = `module.${moduleKey}`;
+  if (!membership || !membership.permissions.includes(permission)) {
+    throw new AccessDenied(403, 'Für diesen Bereich hast du keine Berechtigung. Wende dich an den Administrator deiner Organisation.', { reason: 'missing_module_permission', permission });
+  }
+  return { module: moduleKey, access: true };
+}
+
 function me(ctx) {
   if (!ctx.principal) return { authenticated: false };
   return {
@@ -510,6 +600,11 @@ module.exports = {
   setOrganizationStatus,
   deleteOrganization,
   listAudit,
+  getPermissions,
+  setUserPermissions,
+  getOrganizationModules,
+  setOrganizationModules,
+  checkModuleAccess,
   listPlatformAudit,
   listVisibleApps,
   myApps,

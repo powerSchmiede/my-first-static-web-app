@@ -3,6 +3,7 @@ const { table, getOrNull, listAll, odata } = require('./tables');
 const organizations = require('./organizations');
 const members = require('./members');
 const audit = require('./audit');
+const { effectivePermissions } = require('./permissions');
 
 const LAST_LOGIN_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -105,6 +106,9 @@ async function resolveContext(request) {
         userId: user.id,
         role: user.role,
         status: user.status,
+        modules: organization.modules,
+        // Nur wirksame Rechte: freigeschalteter Bereich und Recht am Benutzer
+        permissions: user.status === 'Active' && organization.status === 'Active' ? effectivePermissions(user.permissions, organization.modules) : [],
       };
       const last = user.lastLoginAt ? Date.parse(user.lastLoginAt) : 0;
       if (Date.now() - last > LAST_LOGIN_INTERVAL_MS) {

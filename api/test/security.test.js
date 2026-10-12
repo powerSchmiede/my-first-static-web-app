@@ -518,3 +518,95 @@ test('Organisationsübersicht in einer Anfrage: nur Org-Admin der eigenen Organi
   assert.equal((await call('GET', `orgs/${state.orgA}/overview`, { as: erin })).status, 403);
   assert.equal((await call('GET', `orgs/${state.orgA}/overview`)).status, 401);
 });
+
+// ---------- Rechteverwaltung ----------
+
+async function userIdOf(as) {
+  return (await call('GET', 'me', { as })).body.membership.userId;
+}
+
+test('Bereiche: erst Freischaltung durch die Plattform, dann Vergabe durch den Org-Admin', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const aliceId = await userIdOf(alice);
+  const erinId = await userIdOf(erin);
+
+  // Ohne Freischaltung kann der Org-Admin den Bereich nicht vergeben.
+  const blocked = await call('PUT', `orgs/${state.orgA}/users/${erinId}/permissions`, { as: alice, body: { permissions: ['module.lohn'] } });
+  assert.equal(blocked.status, 400);
+  assert.equal(blocked.body.code, 'not_licensed');
+
+  // Nur der Plattform-Admin schaltet Bereiche frei.
+  assert.equal((await call('PUT', `platform/orgs/${state.orgA}/modules`, { as: alice, body: { modules: ['lohn'] } })).status, 403);
+  assert.equal((await call('PUT', `platform/orgs/${state.orgA}/modules`, { as: owner, body: { modules: ['lohn', 'unbekannt'] } })).status, 400);
+  assert.deepEqual((await call('PUT', `platform/orgs/${state.orgA}/modules`, { as: owner, body: { modules: ['lohn', 'fibu'] } })).body.modules, ['fibu', 'lohn']);
+
+  // Auch der Org-Admin selbst hat den Bereich erst, wenn er ihn sich vergibt.
+  assert.equal((await call('GET', 'modules/lohn', { as: alice })).status, 403);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${aliceId}/permissions`, { as: alice, body: { permissions: ['module.lohn'] } })).status, 200);
+  assert.equal((await call('GET', 'modules/lohn', { as: alice })).status, 200);
+  assert.ok((await call('GET', 'me', { as: alice })).body.membership.permissions.includes('module.lohn'));
+
+  // Benutzer ohne Recht: kein Zugriff; nach Vergabe: Zugriff, aber nur auf den vergebenen Bereich.
+  assert.equal((await call('GET', 'modules/lohn', { as: erin })).status, 403);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${erinId}/permissions`, { as: alice, body: { permissions: ['module.fibu'] } })).status, 200);
+  assert.equal((await call('GET', 'modules/fibu', { as: erin })).status, 200);
+  assert.equal((await call('GET', 'modules/lohn', { as: erin })).status, 403);
+  assert.equal((await call('GET', 'modules/gibt-es-nicht', { as: erin })).status, 404);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${erinId}/permissions`, { as: alice, body: { permissions: ['admin.alles'] } })).status, 400);
+});
+
+test('Rechte: nur Org-Admin der eigenen Organisation, keine Selbstbedienung für Benutzer', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const erinId = await userIdOf(erin);
+  const bobId = state.bobId;
+
+  assert.equal((await call('GET', `orgs/${state.orgA}/permissions`, { as: erin })).status, 403);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${erinId}/permissions`, { as: erin, body: { permissions: ['module.lohn'] } })).status, 403);
+  // Fremde Organisation: weder lesen noch ändern, auch nicht über die eigene Organisations-URL.
+  assert.equal((await call('GET', `orgs/${state.orgA}/permissions`, { as: bob })).status, 404);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${erinId}/permissions`, { as: bob, body: { permissions: [] } })).status, 404);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${bobId}/permissions`, { as: alice, body: { permissions: ['module.fibu'] } })).status, 404);
+  // Org B hat keine Freischaltung, Bob bekommt Bereiche aus Org A nicht.
+  assert.equal((await call('GET', 'modules/fibu', { as: bob })).status, 403);
+});
+
+test('Wird die Freischaltung entzogen, wirken vergebene Rechte nicht mehr', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  await call('PUT', `platform/orgs/${state.orgA}/modules`, { as: owner, body: { modules: ['lohn'] } });
+  assert.equal((await call('GET', 'modules/fibu', { as: erin })).status, 403);
+  assert.ok(!(await call('GET', 'me', { as: erin })).body.membership.permissions.includes('module.fibu'));
+  // Erneute Freischaltung stellt das gespeicherte Recht wieder her.
+  await call('PUT', `platform/orgs/${state.orgA}/modules`, { as: owner, body: { modules: ['lohn', 'fibu'] } });
+  assert.equal((await call('GET', 'modules/fibu', { as: erin })).status, 200);
+});
+
+test('Support: Plattform-Admin ändert Rechte nur mit Begründung, sichtbar im Protokoll der Organisation', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const erinId = await userIdOf(erin);
+  const overview = await call('GET', `orgs/${state.orgA}/permissions`, { as: owner });
+  assert.equal(overview.status, 200);
+  assert.equal(overview.body.support, true);
+
+  const withoutReason = await call('PUT', `orgs/${state.orgA}/users/${erinId}/permissions`, { as: owner, body: { permissions: ['module.fibu', 'module.lohn'] } });
+  assert.equal(withoutReason.status, 400);
+  assert.equal(withoutReason.body.code, 'reason_required');
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${erinId}/permissions`, { as: owner, body: { permissions: ['module.fibu', 'module.lohn'], reason: 'Ticket #4711' } })).status, 200);
+
+  const log = await call('GET', `orgs/${state.orgA}/audit`, { as: alice });
+  const entry = log.body.find(e => e.action === 'user.permissions_changed' && e.actorKind === 'support');
+  assert.ok(entry, 'Support-Änderung fehlt im Protokoll der Organisation');
+  assert.equal(entry.details.reason, 'Ticket #4711');
+  assert.deepEqual(entry.details.added, ['Lohn']);
+
+  // Plattform-Admins haben ohne eigene Mitgliedschaft keinen Zugriff auf Bereichsdaten.
+  assert.equal((await call('GET', 'modules/lohn', { as: owner })).status, 403);
+});
+
+test('Deaktivierte Benutzer verlieren den Zugriff auf Bereiche', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const erinId = await userIdOf(erin);
+  await call('PATCH', `orgs/${state.orgA}/users/${erinId}`, { as: alice, body: { status: 'Disabled' } });
+  assert.equal((await call('GET', 'modules/fibu', { as: erin })).status, 403);
+  await call('PATCH', `orgs/${state.orgA}/users/${erinId}`, { as: alice, body: { status: 'Active' } });
+  assert.equal((await call('GET', 'modules/fibu', { as: erin })).status, 200);
+});

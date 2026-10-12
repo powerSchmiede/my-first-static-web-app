@@ -39,6 +39,45 @@ app.http('organizationOverview', {
   handler: endpoint(async (request, ctx) => ({ jsonBody: await service.getOrganizationOverview(ctx, request.params.orgId) })),
 });
 
+// ---------- Rechte ----------
+
+app.http('organizationPermissions', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/permissions',
+  handler: endpoint(async (request, ctx) => ({ jsonBody: await service.getPermissions(ctx, request.params.orgId) })),
+});
+
+app.http('organizationUserPermissions', {
+  methods: ['PUT'],
+  authLevel: 'anonymous',
+  route: 'orgs/{orgId}/users/{userId}/permissions',
+  handler: endpoint(async (request, ctx) => ({
+    jsonBody: await service.setUserPermissions(ctx, request.params.orgId, request.params.userId, await readJson(request)),
+  })),
+});
+
+app.http('platformOrganizationModules', {
+  methods: ['GET', 'PUT'],
+  authLevel: 'anonymous',
+  route: 'platform/orgs/{orgId}/modules',
+  handler: endpoint(async (request, ctx) => {
+    const { orgId } = request.params;
+    if (request.method === 'GET') return { jsonBody: await service.getOrganizationModules(ctx, orgId) };
+    const body = await readJson(request);
+    return { jsonBody: await service.setOrganizationModules(ctx, orgId, body.modules) };
+  }),
+});
+
+// Zugriffsprüfung für Bereiche (To-dos, FiBu, Lohn, Dokumente). Künftige Bereichs-APIs
+// nutzen dieselbe Prüfung (service.checkModuleAccess).
+app.http('moduleAccess', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'modules/{moduleKey}',
+  handler: endpoint(async (request, ctx) => ({ jsonBody: service.checkModuleAccess(ctx, request.params.moduleKey) })),
+});
+
 app.http('organizationUsers', {
   methods: ['GET'],
   authLevel: 'anonymous',

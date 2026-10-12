@@ -4,20 +4,22 @@ import { Link } from '../router';
 import { useCached } from '../cache';
 import { Modal } from '../Admin';
 import { Badge, ErrorText, InviteResult, StatCard, STATUS_TONES } from '../ui';
-import OrganizationApps from './AppAccess';
+import OrganizationApps, { OrganizationModules } from './AppAccess';
+import Permissions from './Permissions';
 import Catalog from './Catalog';
 import { AUDIT_LABELS, INVITATION_STATUS_LABELS, ROLE_LABELS, USER_STATUS_LABELS, formatDate } from '../labels';
 
 const TABS = [
   { key: '', label: 'Übersicht' },
   { key: 'benutzer', label: 'Benutzer' },
+  { key: 'rechte', label: 'Rechte' },
   { key: 'einladungen', label: 'Einladungen' },
   { key: 'katalog', label: 'App-Katalog' },
   { key: 'einstellungen', label: 'Einstellungen' },
 ];
 
 // Nur in der Plattform-Ansicht: KanzleiMind-Apps freischalten darf ausschließlich der Plattform-Admin.
-const PLATFORM_TABS = [...TABS.slice(0, 3), { key: 'freischaltung', label: 'Freischaltung' }, ...TABS.slice(3)];
+const PLATFORM_TABS = [...TABS.slice(0, 4), { key: 'freischaltung', label: 'Freischaltung' }, ...TABS.slice(4)];
 
 function InviteDialog({ orgId, onClose, onInvited }) {
   const [email, setEmail] = useState('');
@@ -120,7 +122,10 @@ export function AuditList({ entries }) {
             {entry.details && entry.details.added && entry.details.added.length ? <span className="muted"> · + {entry.details.added.join(', ')}</span> : null}
             {entry.details && entry.details.removed && entry.details.removed.length ? <span className="muted"> · − {entry.details.removed.join(', ')}</span> : null}
           </span>
-          <span className="audit-actor muted">{entry.actorEmail || 'System'}</span>
+          <span className="audit-actor muted">
+            {entry.actorKind === 'support' && <Badge tone="amber">KanzleiMind-Support</Badge>} {entry.actorEmail || 'System'}
+            {entry.details && entry.details.reason ? <span className="audit-reason">Grund: {entry.details.reason}</span> : null}
+          </span>
           {entry.result !== 'success' && <Badge tone={STATUS_TONES[entry.result]}>{entry.result === 'denied' ? 'verweigert' : 'fehlgeschlagen'}</Badge>}
         </li>
       ))}
@@ -384,7 +389,13 @@ export default function Organization({ orgId, tab, basePath, me, backLink, platf
       {active.key === '' && <Overview org={org} audit={audit} basePath={basePath} onInvite={handlers.onInvite} />}
       {active.key === 'benutzer' && <Users users={users} invitations={invitations} me={me} busyId={busyId} {...handlers} />}
       {active.key === 'einladungen' && <Invitations invitations={invitations} busyId={busyId} {...handlers} />}
-      {active.key === 'freischaltung' && <OrganizationApps orgId={orgId} onSaved={load} />}
+      {active.key === 'freischaltung' && (
+        <div className="stack-lg">
+          <OrganizationModules orgId={orgId} />
+          <OrganizationApps orgId={orgId} onSaved={load} />
+        </div>
+      )}
+      {active.key === 'rechte' && <Permissions orgId={orgId} me={me} />}
       {active.key === 'katalog' && <Catalog orgId={orgId} />}
       {active.key === 'einstellungen' && <Settings org={org} onRenamed={load} />}
 

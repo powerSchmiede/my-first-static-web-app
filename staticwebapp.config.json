@@ -12,6 +12,10 @@
             }
         },
         {
+            "route": "/api/modules/*",
+            "allowedRoles": ["authenticated"]
+        },
+        {
             "route": "/api/me/*",
             "allowedRoles": ["authenticated"]
         },

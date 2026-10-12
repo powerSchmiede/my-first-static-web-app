@@ -23,6 +23,8 @@ export const AUDIT_LABELS = {
   'organization.enabled': 'Organisation aktiviert',
   'organization.apps_changed': 'App-Freigaben geändert',
   'organization.deleted': 'Organisation gelöscht',
+  'organization.modules_changed': 'Bereiche freigeschaltet/entzogen',
+  'user.permissions_changed': 'Rechte geändert',
   'catalog.app_enabled': 'App für Benutzer sichtbar geschaltet',
   'catalog.app_disabled': 'App für Benutzer ausgeblendet',
   'catalog.org_app_created': 'App der Organisation angelegt',

@@ -18,6 +18,12 @@ function actorOf(ctx) {
   return { actorIdentity: ctx.principal.identityId, actorEmail: ctx.principal.email };
 }
 
+// Handelt jemand von KanzleiMind in einer fremden Organisation, wird das sichtbar markiert.
+function actorKindOf(ctx, organizationId) {
+  if (!ctx || !ctx.isPlatformAdmin || !organizationId || organizationId === PLATFORM_PARTITION) return 'member';
+  return ctx.membership && ctx.membership.organizationId === organizationId ? 'member' : 'support';
+}
+
 async function record(ctx, { organizationId, action, targetType = '', targetId = '', result = 'success', details = {} }) {
   try {
     const client = await table('audit');
@@ -26,6 +32,7 @@ async function record(ctx, { organizationId, action, targetType = '', targetId =
       rowKey: rowKey(),
       timestamp: new Date().toISOString(),
       ...actorOf(ctx),
+      actorKind: actorKindOf(ctx, organizationId),
       action,
       targetType,
       targetId,
@@ -47,6 +54,7 @@ async function list(organizationId, limit = 100) {
       id: entity.rowKey,
       timestamp: entity.timestamp,
       actorEmail: entity.actorEmail,
+      actorKind: entity.actorKind || 'member',
       action: entity.action,
       targetType: entity.targetType,
       targetId: entity.targetId,

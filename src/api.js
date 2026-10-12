@@ -72,7 +72,15 @@ export const listAudit = orgId => request('GET', `/api/orgs/${enc(orgId)}/audit`
 export const listOrganizations = () => request('GET', '/api/platform/orgs');
 export const createOrganization = data => request('POST', '/api/platform/orgs', data);
 export const setOrganizationStatus = (orgId, status) => request('PATCH', `/api/platform/orgs/${enc(orgId)}`, { status });
-export const deleteOrganization = (orgId, confirmName) => request('POST', `/api/platform/orgs/${enc(orgId)}/delete`, { confirmName });
+// Rechte
+export const getPermissions = orgId => request('GET', `/api/orgs/${enc(orgId)}/permissions`);
+export const setUserPermissions = (orgId, userId, permissions, reason) =>
+  request('PUT', `/api/orgs/${enc(orgId)}/users/${enc(userId)}/permissions`, { permissions, ...(reason ? { reason } : {}) });
+export const getOrganizationModules = orgId => request('GET', `/api/platform/orgs/${enc(orgId)}/modules`);
+export const setOrganizationModules = (orgId, modules) => request('PUT', `/api/platform/orgs/${enc(orgId)}/modules`, { modules });
+export const checkModule = key => request('GET', `/api/modules/${enc(key)}`);
+
+export const deleteOrganization =(orgId, confirmName) => request('POST', `/api/platform/orgs/${enc(orgId)}/delete`, { confirmName });
 export const listPlatformAudit =() => request('GET', '/api/platform/audit');
 export const getOrganizationApps = orgId => request('GET', `/api/platform/orgs/${enc(orgId)}/apps`);
 export const setOrganizationApps = (orgId, appIds) => request('PUT', `/api/platform/orgs/${enc(orgId)}/apps`, { appIds });

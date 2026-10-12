@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { table, getOrNull, listAll, odata, isConflict } = require('./tables');
 const { HttpError } = require('./errors');
+const { parseList, validatePermissions } = require('./permissions');
 
 // Benutzer und Einladungen liegen in derselben Tabelle und Partition (= OrganizationId).
 // Jede Funktion verlangt die OrganizationId; eine organisationsübergreifende Abfrage
@@ -43,6 +44,7 @@ function toUser(entity) {
     invitedAt: entity.invitedAt || '',
     invitedBy: entity.invitedBy || '',
     lastLoginAt: entity.lastLoginAt || '',
+    permissions: parseList(entity.permissions),
   };
 }
 
@@ -77,6 +79,7 @@ async function updateUser(organizationId, userId, patch) {
   }
   if (patch.role !== undefined) changes.role = patch.role;
   if (patch.lastLoginAt !== undefined) changes.lastLoginAt = patch.lastLoginAt;
+  if (patch.permissions !== undefined) changes.permissions = JSON.stringify(validatePermissions(patch.permissions));
   try {
     await client.updateEntity({ partitionKey: organizationId, rowKey: entity.rowKey, ...changes }, 'Merge', { etag: entity.etag });
   } catch (e) {

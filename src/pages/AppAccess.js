@@ -112,3 +112,60 @@ export default function OrganizationApps({ orgId, onSaved }) {
     </div>
   );
 }
+
+// Plattform-Ansicht: Bereiche (To-dos, FiBu, Lohn, Dokumente) für eine Organisation freischalten.
+// Der Org-Admin vergibt sie danach im Reiter "Rechte" an einzelne Benutzer.
+export function OrganizationModules({ orgId }) {
+  const [available, setAvailable] = useState([]);
+  const [saved, setSaved] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.getOrganizationModules(orgId)
+      .then(result => { setAvailable(result.available); setSaved(result.modules); })
+      .catch(err => setError(err.message));
+  }, [orgId]);
+
+  async function toggle(key, on) {
+    const next = on ? [...saved, key] : saved.filter(m => m !== key);
+    setBusy(key);
+    setError('');
+    try {
+      setSaved((await api.setOrganizationModules(orgId, next)).modules);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return (
+    <div className="panel stack">
+      <div>
+        <h3>Freigeschaltete Bereiche</h3>
+        <p className="hint">Freigeschaltete Bereiche kann der Organization Admin im Reiter „Rechte“ an Benutzer vergeben. Wird ein Bereich entzogen, verlieren alle Benutzer sofort den Zugriff.</p>
+      </div>
+      <ErrorText error={error} />
+      {!saved ? <p className="hint">Wird geladen …</p> : (
+        <ul className="manage-list">
+          {available.map(module => (
+            <li key={module.key} className="manage-row module-row">
+              <div className="manage-info">
+                <strong>{module.title}</strong>
+                <span>{module.description}</span>
+              </div>
+              <div className="manage-actions">
+                <label className="switch">
+                  <input type="checkbox" checked={saved.includes(module.key)} disabled={busy === module.key} onChange={e => toggle(module.key, e.target.checked)} />
+                  <span className="switch-track" aria-hidden="true" />
+                  <span className="switch-label">{saved.includes(module.key) ? 'Freigeschaltet' : 'Nicht freigeschaltet'}</span>
+                </label>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
