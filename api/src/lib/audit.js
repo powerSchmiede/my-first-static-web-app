@@ -20,8 +20,10 @@ function actorOf(ctx) {
 
 // Handelt jemand von KanzleiMind in einer fremden Organisation, wird das sichtbar markiert.
 function actorKindOf(ctx, organizationId) {
-  if (!ctx || !ctx.isPlatformAdmin || !organizationId || organizationId === PLATFORM_PARTITION) return 'member';
-  return ctx.membership && ctx.membership.organizationId === organizationId ? 'member' : 'support';
+  if (!ctx || !organizationId || organizationId === PLATFORM_PARTITION) return 'member';
+  if (ctx.membership && ctx.membership.organizationId === organizationId) return 'member';
+  if (ctx.staff && ctx.staff.organizationIds.includes(organizationId)) return 'kanzlei';
+  return ctx.isPlatformAdmin ? 'support' : 'member';
 }
 
 async function record(ctx, { organizationId, action, targetType = '', targetId = '', result = 'success', details = {} }) {

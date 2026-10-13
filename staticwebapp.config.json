@@ -1,39 +1,73 @@
 {
     "routes": [
         {
+            "route": "/api/kanzlei/*",
+            "allowedRoles": [
+                "authenticated"
+            ]
+        },
+        {
+            "route": "/api/todos",
+            "allowedRoles": [
+                "authenticated"
+            ]
+        },
+        {
+            "route": "/api/todos/*",
+            "allowedRoles": [
+                "authenticated"
+            ]
+        },
+        {
             "route": "/api/apps",
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": [
+                "authenticated"
+            ]
         },
         {
             "route": "/api/apps/*",
-            "allowedRoles": ["authenticated"],
+            "allowedRoles": [
+                "authenticated"
+            ],
             "headers": {
                 "X-Frame-Options": "SAMEORIGIN"
             }
         },
         {
             "route": "/api/modules/*",
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": [
+                "authenticated"
+            ]
         },
         {
             "route": "/api/me/*",
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": [
+                "authenticated"
+            ]
         },
         {
             "route": "/api/manage/*",
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": [
+                "authenticated"
+            ]
         },
         {
             "route": "/api/orgs/*",
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": [
+                "authenticated"
+            ]
         },
         {
             "route": "/api/platform/*",
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": [
+                "authenticated"
+            ]
         },
         {
             "route": "/api/invitations/accept",
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": [
+                "authenticated"
+            ]
         },
         {
             "route": "/.auth/login/github",
@@ -42,7 +76,12 @@
     ],
     "navigationFallback": {
         "rewrite": "/index.html",
-        "exclude": ["/api/*", "/.auth/*","/static/*", "/*.{ico,png,json,txt,js,css}"]
+        "exclude": [
+            "/api/*",
+            "/.auth/*",
+            "/static/*",
+            "/*.{ico,png,json,txt,js,css}"
+        ]
     },
     "globalHeaders": {
         "X-Content-Type-Options": "nosniff",
@@ -75,7 +114,11 @@
                     },
                     "login": {
                         "nameClaimType": "email",
-                        "scopes": ["openid", "profile", "email"]
+                        "scopes": [
+                            "openid",
+                            "profile",
+                            "email"
+                        ]
                     }
                 },
                 "kanzleimindsignup": {
@@ -90,8 +133,14 @@
                     },
                     "login": {
                         "nameClaimType": "email",
-                        "scopes": ["openid", "profile", "email"],
-                        "loginParameterNames": ["prompt=create"]
+                        "scopes": [
+                            "openid",
+                            "profile",
+                            "email"
+                        ],
+                        "loginParameterNames": [
+                            "prompt=create"
+                        ]
                     }
                 }
             }

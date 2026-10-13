@@ -18,7 +18,17 @@ const PERMISSIONS = {
   'catalog.manage': ['OrgAdmin'],
   'permissions.manage': ['OrgAdmin'],
   'groups.manage': ['OrgAdmin'],
+  'rights.read': ['OrgAdmin'],
+  'rights.request': [],
+  'settings.approver': ['OrgAdmin'],
 };
+
+// Was Kanzlei-Mitarbeitende bei ihren Mandanten dürfen. Keine Lohndaten, keine Verwaltung.
+const STAFF_PERMISSIONS = ['org.read', 'users.read', 'rights.read', 'rights.request'];
+
+function isAssignedStaff(ctx, organizationId) {
+  return !!ctx.staff && ctx.staff.organizationIds.includes(organizationId);
+}
 
 function isValidRole(role) {
   return Object.prototype.hasOwnProperty.call(ROLES, role);
@@ -44,6 +54,7 @@ function authorizeOrg(ctx, organizationId, permission) {
 
   const membership = ctx.membership;
   if (!membership || membership.organizationId !== organizationId) {
+    if (isAssignedStaff(ctx, organizationId) && STAFF_PERMISSIONS.includes(permission)) return;
     // 404 statt 403: Fremde Organisationen werden nicht bestätigt.
     throw new AccessDenied(404, 'Nicht gefunden.', { reason: 'foreign_organization', requestedOrganizationId: organizationId });
   }
@@ -68,4 +79,4 @@ function assertCanAssignRole(ctx, role) {
   }
 }
 
-module.exports = { ROLES, PERMISSIONS, isValidRole, requireAuthenticated, requirePlatformAdmin, authorizeOrg, assertCanAssignRole };
+module.exports = { ROLES, PERMISSIONS, STAFF_PERMISSIONS, isAssignedStaff, isValidRole, requireAuthenticated, requirePlatformAdmin, authorizeOrg, assertCanAssignRole };

@@ -8,6 +8,8 @@ const TABLE_NAMES = {
   invitationTokens: 'InvitationTokens',
   audit: 'AuditLog', // Partition = OrganizationId bzw. "_platform"
   platformAdmins: 'PlatformAdmins',
+  staff: 'KanzleiStaff', // Kanzlei-Mitarbeitende, Partition = E-Mail
+  staffAssignments: 'StaffAssignments', // Zuordnung Mitarbeitende -> Mandant, Partition = E-Mail, RowKey = OrganizationId
 };
 
 const clients = {};

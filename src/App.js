@@ -14,6 +14,10 @@ import MyAppsDialog from './pages/MyApps';
 import AppViewer from './pages/AppViewer';
 import Shell from './Shell';
 import Profile from './pages/Profile';
+import Todos from './pages/Todos';
+import RightsRequest from './pages/RightsRequest';
+import Kanzlei from './pages/Kanzlei';
+import StaffAdmin from './pages/StaffAdmin';
 
 function GearIcon() {
   return (
@@ -89,7 +93,6 @@ function Home({ canPersonalize, isPlatformAdmin, organizationName }) {
 
 // Bereiche, die in der Navigation schon sichtbar sind, aber noch keine Inhalte haben.
 const UPCOMING = {
-  todos: { label: 'To-dos', title: 'To-dos', text: 'Hier verwaltest du künftig deine Aufgaben und die deines Teams.' },
   fibu: { label: 'FiBu', title: 'Finanzbuchhaltung', text: 'Hier findest du künftig alles rund um die Finanzbuchhaltung.' },
   lohn: { label: 'Lohn', title: 'Lohn', text: 'Hier findest du künftig alles rund um die Lohnabrechnung.' },
   dokumente: { label: 'Dokumente', title: 'Dokumente', text: 'Hier findest du künftig deine Dokumente an einem Ort.' },
@@ -217,7 +220,7 @@ function App() {
   } else if (!signedIn) {
     section = 'landing';
     page = <Landing />;
-  } else if (!platformAdmin && !membership) {
+  } else if (!platformAdmin && !membership && !me.staff) {
     section = '';
     page = (
       <Notice title="Noch kein Zugang">
@@ -226,7 +229,7 @@ function App() {
         <p><a className="btn" href={LOGOUT_URL}>Abmelden</a></p>
       </Notice>
     );
-  } else if (!platformAdmin && blocked) {
+  } else if (!platformAdmin && !me.staff && blocked) {
     section = '';
     page = (
       <Notice title="Zugang deaktiviert">
@@ -234,6 +237,17 @@ function App() {
         <p><a className="btn" href={LOGOUT_URL}>Abmelden</a></p>
       </Notice>
     );
+  } else if (segments[0] === 'todos') {
+    section = 'todos';
+    page = <Todos showOrganization={!!me.staff} />;
+  } else if (segments[0] === 'antrag' && segments[1] && segments[2]) {
+    section = 'todos';
+    page = <RightsRequest key={segments[2]} orgId={segments[1]} requestId={segments[2]} />;
+  } else if (segments[0] === 'kanzlei') {
+    section = 'kanzlei';
+    page = me.staff
+      ? <Kanzlei key={segments[1] || 'list'} orgId={segments[1]} />
+      : <Notice title="Kein Zugriff"><p>Dieser Bereich ist Kanzlei-Mitarbeitenden vorbehalten.</p></Notice>;
   } else if (segments[0] === 'app' && segments[1]) {
     section = 'apps';
     page = <AppViewer key={segments[1]} appId={segments[1]} />;
@@ -253,16 +267,25 @@ function App() {
     section = 'platform';
     if (!platformAdmin) page = <Notice title="Kein Zugriff"><p>Dieser Bereich ist der Plattform-Verwaltung vorbehalten.</p></Notice>;
     else if (segments[1] === 'apps') page = <PlatformApps />;
+    else if (segments[1] === 'team') page = <StaffAdmin />;
     else if (segments[1] === 'org' && segments[2]) {
       const base = `/plattform/org/${encodeURIComponent(segments[2])}`;
       page = <Organization key={segments[2]} orgId={segments[2]} tab={segments[3]} basePath={base} me={me} platformView backLink={<Link to="/plattform" className="back-link">← Alle Organisationen</Link>} />;
     } else page = <Platform />;
+  } else if (me.staff && !membership) {
+    // Kanzlei-Mitarbeitende ohne eigene Organisation starten bei ihren Mandanten.
+    section = 'kanzlei';
+    page = <Kanzlei key="list" />;
   } else {
     page = <Home isPlatformAdmin={platformAdmin} canPersonalize={!!membership && !blocked} organizationName={membership ? membership.organizationName : ''} />;
   }
 
   if (signedIn) {
-    const items = [{ key: 'apps', label: 'Apps', to: '/' }];
+    const items = [];
+    if (membership || platformAdmin) items.push({ key: 'apps', label: 'Apps', to: '/' });
+    if (me.staff) items.push({ key: 'kanzlei', label: 'Mandanten', to: '/kanzlei' });
+    // To-dos sind Grundfunktion für alle Mitglieder und Kanzlei-Mitarbeitenden.
+    if ((membership && !blocked) || me.staff) items.push({ key: 'todos', label: 'To-dos', to: '/todos', badge: me.openTodos || 0 });
     // Nur Bereiche mit wirksamem Recht (Anzeige; geprüft wird auf dem Server)
     const granted = membership && !blocked ? membership.permissions || [] : [];
     Object.entries(UPCOMING).forEach(([key, info]) => {

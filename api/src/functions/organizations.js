@@ -14,7 +14,7 @@ app.http('me', {
   methods: ['GET'],
   authLevel: 'anonymous',
   route: 'me',
-  handler: endpoint(async (request, ctx) => ({ jsonBody: service.me(ctx) })),
+  handler: endpoint(async (request, ctx) => ({ jsonBody: await service.me(ctx) })),
 });
 
 app.http('organization', {

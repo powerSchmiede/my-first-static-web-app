@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { table, getOrNull, listAll, odata, isConflict } = require('./tables');
 const { HttpError } = require('./errors');
-const { parseList, validatePermissions } = require('./permissions');
+const { parseList, validatePermissions, knownPermissions } = require('./permissions');
 
 // Benutzer und Einladungen liegen in derselben Tabelle und Partition (= OrganizationId).
 // Jede Funktion verlangt die OrganizationId; eine organisationsübergreifende Abfrage
@@ -44,7 +44,7 @@ function toUser(entity) {
     invitedAt: entity.invitedAt || '',
     invitedBy: entity.invitedBy || '',
     lastLoginAt: entity.lastLoginAt || '',
-    permissions: parseList(entity.permissions),
+    permissions: knownPermissions(parseList(entity.permissions)),
     groups: parseList(entity.groups),
   };
 }

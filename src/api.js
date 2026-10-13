@@ -91,7 +91,22 @@ export const saveMyProfile = data => request('PUT', '/api/me/profile', data);
 export const fetchUserProfile = (orgId, userId) => request('GET', `/api/orgs/${enc(orgId)}/users/${enc(userId)}/profile`);
 export const saveUserProfile = (orgId, userId, data) => request('PUT', `/api/orgs/${enc(orgId)}/users/${enc(userId)}/profile`, data);
 
-export const checkModule = key =>request('GET', `/api/modules/${enc(key)}`);
+// Freigabe-Prozess Kanzlei <-> Mandant (DATEV-Rechte), To-dos, Kanzlei-Team
+export const fetchMandanten = () => request('GET', '/api/kanzlei/mandanten');
+export const getRightsOverview = orgId => request('GET', `/api/orgs/${enc(orgId)}/rights`);
+export const createRightsRequest = (orgId, data) => request('POST', `/api/orgs/${enc(orgId)}/rights-requests`, data);
+export const getRightsRequest = (orgId, requestId) => request('GET', `/api/orgs/${enc(orgId)}/rights-requests/${enc(requestId)}`);
+export const decideRightsRequest = (orgId, requestId, data) => request('POST', `/api/orgs/${enc(orgId)}/rights-requests/${enc(requestId)}/decision`, data);
+export const implementRightsRequest = (orgId, requestId, data) => request('POST', `/api/orgs/${enc(orgId)}/rights-requests/${enc(requestId)}/implemented`, data || {});
+export const setRightsApprover = (orgId, data) => request('PUT', `/api/orgs/${enc(orgId)}/settings/rights-approver`, data);
+export const fetchTodos = () => request('GET', '/api/todos');
+export const completeTodo = (orgId, todoId) => request('POST', `/api/todos/${enc(orgId)}/${enc(todoId)}/done`);
+export const fetchStaff = () => request('GET', '/api/platform/staff');
+export const saveStaff = data => request('POST', '/api/platform/staff', data);
+export const setStaffOrgs = (email, organizationIds) => request('PUT', `/api/platform/staff/${enc(email)}/orgs`, { organizationIds });
+export const deleteStaff = email => request('POST', `/api/platform/staff/${enc(email)}/delete`);
+
+export const checkModule = key => request('GET', `/api/modules/${enc(key)}`);
 
 export const deleteOrganization =(orgId, confirmName) => request('POST', `/api/platform/orgs/${enc(orgId)}/delete`, { confirmName });
 export const listPlatformAudit =() => request('GET', '/api/platform/audit');

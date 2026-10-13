@@ -18,7 +18,7 @@ async function readJson(request) {
 // beantworten, verweigerte Zugriffe auditieren.
 function endpoint(handler) {
   return async (request, invocation) => {
-    let ctx = { principal: null, isPlatformAdmin: false, membership: null };
+    let ctx = { principal: null, isPlatformAdmin: false, membership: null, staff: null };
     try {
       ctx = await resolveContext(request);
       const result = await handler(request, ctx, invocation);

@@ -13,7 +13,6 @@
 const { HttpError } = require('./errors');
 
 const MODULES = [
-  { key: 'todos', title: 'To-dos', description: 'Aufgaben der Organisation sehen und bearbeiten' },
   { key: 'fibu', title: 'Finanzbuchhaltung', description: 'Zugriff auf den Bereich FiBu' },
   { key: 'lohn', title: 'Lohn', description: 'Zugriff auf den Bereich Lohn (sensible Personaldaten)' },
   { key: 'dokumente', title: 'Dokumente', description: 'Zugriff auf den Dokumentenbereich (Ordnerrechte folgen)' },
@@ -67,4 +66,8 @@ function parseList(value) {
   }
 }
 
-module.exports = { MODULES, MODULE_KEYS, CATALOG, PERMISSION_KEYS, moduleOf, validateModules, validatePermissions, effectivePermissions, parseList };
+// Gespeicherte Bereiche/Rechte auf den aktuellen Katalog beschränken (z. B. entfallene Bereiche).
+const knownModules = list => list.filter(m => MODULE_KEYS.includes(m));
+const knownPermissions = list => list.filter(p => PERMISSION_KEYS.includes(p));
+
+module.exports = { MODULES, MODULE_KEYS, CATALOG, PERMISSION_KEYS, moduleOf, validateModules, validatePermissions, effectivePermissions, parseList, knownModules, knownPermissions };

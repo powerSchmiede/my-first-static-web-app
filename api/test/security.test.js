@@ -18,6 +18,7 @@ const routes = [];
 functions.app.http = (name, options) => routes.push({ name, ...options });
 require('../src/functions/organizations');
 require('../src/functions/apps');
+require('../src/functions/workflow');
 
 function principal(name, email, provider = 'kanzleimind') {
   return { identityProvider: provider, userId: `${name}-${run}`, userDetails: email, userRoles: ['anonymous', 'authenticated'], claims: [{ typ: 'email', val: email }, { typ: 'name', val: name }] };
@@ -741,4 +742,133 @@ test('Profil: ohne Schlüssel keine Lohndaten, beim Entfernen des Benutzers wird
   assert.equal((await call('DELETE', `orgs/${state.orgA}/users/${hansId}`, { as: alice })).status, 204);
   const { table } = require('../src/lib/tables');
   await assert.rejects((await table('orgData')).getEntity(state.orgA, `prof_${hansId}`));
+});
+
+
+// ---------- Kanzlei-Mitarbeitende und Freigabe-Prozess (DATEV-Rechte) ----------
+
+const ma1 = principal('ma1', `ma1-${run}@kanzlei.test`, 'aad');
+const ma2 = principal('ma2', `ma2-${run}@kanzlei.test`, 'aad');
+const RIGHTS = ['datev.bank.kontoumsaetze', 'datev.belege_personal.lohn_unterlagen', 'datev.personalwirtschaft.personaldaten'];
+const todosOf = async as => (await call('GET', 'todos', { as })).body;
+
+test('Kanzlei-Mitarbeitende: nur der Plattform-Admin legt sie an und ordnet Mandanten zu', async () => {
+  assert.equal((await call('POST', 'platform/staff', { as: alice, body: { email: ma1.userDetails } })).status, 403);
+  assert.equal((await call('POST', 'platform/staff', { as: owner, body: { email: ma1.userDetails, name: 'Mia Kanzlei' } })).status, 200);
+  assert.equal((await call('POST', 'platform/staff', { as: owner, body: { email: ma2.userDetails, name: 'Max Kanzlei' } })).status, 200);
+  assert.equal((await call('PUT', `platform/staff/${encodeURIComponent(ma1.userDetails)}/orgs`, { as: owner, body: { organizationIds: [state.orgA] } })).status, 200);
+  assert.equal((await call('PUT', `platform/staff/${encodeURIComponent(ma1.userDetails)}/orgs`, { as: owner, body: { organizationIds: ['gibt-es-nicht'] } })).status, 400);
+
+  const me = await call('GET', 'me', { as: ma1 });
+  assert.deepEqual(me.body.staff.organizations.map(o => o.id), [state.orgA]);
+  assert.deepEqual((await call('GET', 'kanzlei/mandanten', { as: ma1 })).body.map(o => o.id), [state.orgA]);
+  assert.deepEqual((await call('GET', 'kanzlei/mandanten', { as: ma2 })).body, []);
+  assert.equal((await call('GET', 'kanzlei/mandanten', { as: alice })).status, 403);
+  // Mitarbeitende nur mit Microsoft-365-Anmeldung: dieselbe Adresse als KanzleiMind-Konto zählt nicht.
+  assert.equal((await call('GET', 'kanzlei/mandanten', { as: principal('ma1', ma1.userDetails) })).status, 403);
+});
+
+test('Kanzlei-Mitarbeitende sehen nur zugeordnete Mandanten und keine Lohndaten', async () => {
+  assert.equal((await call('GET', `orgs/${state.orgA}/rights`, { as: ma1 })).status, 200);
+  assert.equal((await call('GET', `orgs/${state.orgB}/rights`, { as: ma1 })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgA}/rights`, { as: ma2 })).status, 404);
+  const erinId = await userIdOf(principal('erin', `erin-${run}@a.test`));
+  // Keine Verwaltung und keine Profile/Lohndaten.
+  assert.equal((await call('PUT', `orgs/${state.orgA}/users/${erinId}/permissions`, { as: ma1, body: { permissions: [] } })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgA}/users/${erinId}/profile`, { as: ma1 })).status, 404);
+  assert.equal((await call('GET', `orgs/${state.orgA}/audit`, { as: ma1 })).status, 404);
+});
+
+test('Freigabe-Prozess: Kanzlei füllt vor, Org-Admins geben frei, Kanzlei setzt um', async () => {
+  const erin = principal('erin', `erin-${run}@a.test`);
+  const erinId = await userIdOf(erin);
+
+  // Vorbefüllen dürfen nur zugeordnete Kanzlei-Mitarbeitende (Org-Admins und Benutzer nicht).
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests`, { as: alice, body: { userId: erinId, rights: RIGHTS } })).status, 403);
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests`, { as: ma2, body: { userId: erinId, rights: RIGHTS } })).status, 404);
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests`, { as: ma1, body: { userId: erinId, rights: ['datev.alles'] } })).status, 400);
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests`, { as: ma1, body: { userId: state.bobId, rights: RIGHTS } })).status, 404);
+
+  const created = await call('POST', `orgs/${state.orgA}/rights-requests`, { as: ma1, body: { userId: erinId, rights: RIGHTS, comment: 'Neue Lohnsachbearbeiterin' } });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.emailStatus, 'not_configured');
+  const requestId = created.body.request.id;
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests`, { as: ma1, body: { userId: erinId, rights: RIGHTS } })).body.code, 'request_open');
+
+  // To-do landet bei den Org-Admins (Standard), nicht bei Benutzern und nicht bei fremden Orgs.
+  assert.ok((await todosOf(alice)).some(t => t.requestId === requestId && t.kind === 'approval' && t.status === 'open'));
+  assert.ok(!(await todosOf(erin)).some(t => t.requestId === requestId));
+  assert.ok(!(await todosOf(bob)).some(t => t.requestId === requestId));
+  assert.ok((await call('GET', 'me', { as: alice })).body.openTodos >= 1);
+
+  // Antrag ansehen: Admin ja, Benutzerin ohne Zuständigkeit nein, fremde Org nein.
+  assert.equal((await call('GET', `orgs/${state.orgA}/rights-requests/${requestId}`, { as: alice })).body.canDecide, true);
+  assert.equal((await call('GET', `orgs/${state.orgA}/rights-requests/${requestId}`, { as: erin })).status, 403);
+  assert.equal((await call('GET', `orgs/${state.orgA}/rights-requests/${requestId}`, { as: bob })).status, 404);
+
+  // Entscheiden: nur Zuständige – nicht die Kanzlei, nicht der Support.
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/decision`, { as: ma1, body: { decision: 'approve', rights: RIGHTS } })).status, 404);
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/decision`, { as: owner, body: { decision: 'approve', rights: RIGHTS } })).status, 404);
+  // Umsetzen geht erst nach Freigabe.
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/implemented`, { as: ma1, body: {} })).body.code, 'request_state');
+
+  const adjusted = RIGHTS.slice(0, 2);
+  const decided = await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/decision`, { as: alice, body: { decision: 'approve', rights: adjusted, comment: 'Personaldaten nicht nötig' } });
+  assert.equal(decided.status, 200);
+  assert.deepEqual([...decided.body.request.approved].sort(), [...adjusted].sort());
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/decision`, { as: alice, body: { decision: 'approve', rights: RIGHTS } })).body.code, 'request_state');
+  assert.ok(!(await todosOf(alice)).some(t => t.requestId === requestId && t.status === 'open'));
+  assert.ok((await todosOf(ma1)).some(t => t.requestId === requestId && t.kind === 'implementation' && t.status === 'open'));
+  assert.ok(!(await todosOf(ma2)).some(t => t.requestId === requestId));
+
+  // Umsetzen: nur Kanzlei; Org-Admin nicht.
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/implemented`, { as: alice, body: {} })).status, 403);
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/implemented`, { as: ma1, body: {} })).status, 200);
+  const overview = await call('GET', `orgs/${state.orgA}/rights`, { as: alice });
+  assert.deepEqual([...overview.body.users.find(u => u.id === erinId).rights].sort(), [...adjusted].sort());
+  assert.ok(!(await todosOf(ma1)).some(t => t.requestId === requestId && t.status === 'open'));
+
+  // Protokoll des Mandanten: Kanzlei-Schritte sind gekennzeichnet.
+  const log = (await call('GET', `orgs/${state.orgA}/audit`, { as: alice })).body;
+  for (const action of ['rights.requested', 'rights.approved', 'rights.implemented']) assert.ok(log.some(e => e.action === action), action);
+  assert.equal(log.find(e => e.action === 'rights.requested').actorKind, 'kanzlei');
+  assert.deepEqual(log.find(e => e.action === 'rights.approved').details.removed, ['Personalwirtschaft › Personaldaten']);
+});
+
+test('Zuständige Gruppe: nur deren Mitglieder geben frei, Ablehnung braucht einen Grund', async () => {
+  const { person: lena, id: lenaId } = await joinOrgA('lena');
+  const group = await call('POST', `orgs/${state.orgA}/groups`, { as: alice, body: { name: `Lohn-Freigabe ${run}` } });
+  await call('PUT', `orgs/${state.orgA}/users/${lenaId}/groups`, { as: alice, body: { groupIds: [group.body.id] } });
+  assert.equal((await call('PUT', `orgs/${state.orgA}/settings/rights-approver`, { as: ma1, body: { type: 'group', groupId: group.body.id } })).status, 404);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/settings/rights-approver`, { as: alice, body: { type: 'group', groupId: 'fremd' } })).status, 400);
+  assert.equal((await call('PUT', `orgs/${state.orgA}/settings/rights-approver`, { as: alice, body: { type: 'group', groupId: group.body.id } })).status, 200);
+
+  const created = await call('POST', `orgs/${state.orgA}/rights-requests`, { as: ma1, body: { userId: lenaId, rights: RIGHTS.slice(0, 1) } });
+  const requestId = created.body.request.id;
+  assert.ok((await todosOf(lena)).some(t => t.requestId === requestId && t.status === 'open'));
+  assert.ok(!(await todosOf(alice)).some(t => t.requestId === requestId && t.status === 'open'));
+  // Org-Admin außerhalb der Gruppe darf ansehen, aber nicht entscheiden.
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/decision`, { as: alice, body: { decision: 'approve', rights: [] } })).status, 403);
+
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/decision`, { as: lena, body: { decision: 'reject' } })).body.code, 'comment_required');
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests/${requestId}/decision`, { as: lena, body: { decision: 'reject', comment: 'Brauche ich nicht' } })).status, 200);
+  const info = (await todosOf(ma1)).find(t => t.requestId === requestId && t.kind === 'info');
+  assert.ok(info);
+  // Info-To-dos hakt die Kanzlei ab; fremde Benutzer können das nicht.
+  assert.equal((await call('POST', `todos/${state.orgA}/${info.id}/done`, { as: lena })).status, 404);
+  assert.equal((await call('POST', `todos/${state.orgA}/${info.id}/done`, { as: ma1 })).status, 200);
+
+  await call('PUT', `orgs/${state.orgA}/settings/rights-approver`, { as: alice, body: { type: 'admins' } });
+});
+
+test('Deaktivierte Kanzlei-Mitarbeitende und entfernte Zuordnungen verlieren den Zugriff sofort', async () => {
+  await call('POST', 'platform/staff', { as: owner, body: { email: ma1.userDetails, active: false } });
+  assert.equal((await call('GET', `orgs/${state.orgA}/rights`, { as: ma1 })).status, 404);
+  await call('POST', 'platform/staff', { as: owner, body: { email: ma1.userDetails, active: true } });
+  assert.equal((await call('GET', `orgs/${state.orgA}/rights`, { as: ma1 })).status, 200);
+  await call('PUT', `platform/staff/${encodeURIComponent(ma1.userDetails)}/orgs`, { as: owner, body: { organizationIds: [] } });
+  assert.equal((await call('GET', `orgs/${state.orgA}/rights`, { as: ma1 })).status, 404);
+  // Support ohne Zuordnung: nur mit Begründung.
+  const erinId = await userIdOf(principal('erin', `erin-${run}@a.test`));
+  assert.equal((await call('POST', `orgs/${state.orgA}/rights-requests`, { as: owner, body: { userId: erinId, rights: RIGHTS } })).body.code, 'reason_required');
 });

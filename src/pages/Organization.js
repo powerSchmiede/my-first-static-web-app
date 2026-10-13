@@ -8,6 +8,7 @@ import OrganizationApps, { OrganizationModules } from './AppAccess';
 import Permissions from './Permissions';
 import Groups from './Groups';
 import Profile from './Profile';
+import SystemRightsOverview from './SystemRights';
 import Catalog from './Catalog';
 import { AUDIT_LABELS, INVITATION_STATUS_LABELS, ROLE_LABELS, USER_STATUS_LABELS, formatDate } from '../labels';
 
@@ -17,6 +18,7 @@ const TABS = [
   { key: 'gruppen', label: 'Gruppen' },
   { key: 'rechte', label: 'Rechte' },
   { key: 'einladungen', label: 'Einladungen' },
+  { key: 'datev', label: 'DATEV-Rechte' },
   { key: 'katalog', label: 'App-Katalog' },
   { key: 'einstellungen', label: 'Einstellungen' },
 ];
@@ -126,7 +128,8 @@ export function AuditList({ entries }) {
             {entry.details && entry.details.removed && entry.details.removed.length ? <span className="muted"> · − {entry.details.removed.join(', ')}</span> : null}
           </span>
           <span className="audit-actor muted">
-            {entry.actorKind === 'support' && <Badge tone="amber">KanzleiMind-Support</Badge>} {entry.actorEmail || 'System'}
+            {entry.actorKind === 'support' && <Badge tone="amber">KanzleiMind-Support</Badge>}
+            {entry.actorKind === 'kanzlei' && <Badge tone="blue">Kanzlei</Badge>} {entry.actorEmail || 'System'}
             {entry.details && entry.details.reason ? <span className="audit-reason">Grund: {entry.details.reason}</span> : null}
           </span>
           {entry.result !== 'success' && <Badge tone={STATUS_TONES[entry.result]}>{entry.result === 'denied' ? 'verweigert' : 'fehlgeschlagen'}</Badge>}
@@ -405,6 +408,7 @@ export default function Organization({ orgId, tab, subId, basePath, me, backLink
       )}
       {active.key === 'rechte' && <Permissions orgId={orgId} me={me} />}
       {active.key === 'gruppen' && <Groups orgId={orgId} />}
+      {active.key === 'datev' && <SystemRightsOverview orgId={orgId} />}
       {active.key === 'katalog' && <Catalog orgId={orgId} />}
       {active.key === 'einstellungen' && <Settings org={org} onRenamed={load} />}
 

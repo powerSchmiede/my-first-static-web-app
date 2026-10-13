@@ -1,10 +1,20 @@
 const crypto = require('crypto');
 const { table, getOrNull, listAll, odata } = require('./tables');
 const { HttpError } = require('./errors');
-const { validateModules, parseList } = require('./permissions');
+const { validateModules, parseList, knownModules } = require('./permissions');
 
 const PARTITION = 'org';
 const STATUSES = ['Active', 'Disabled'];
+
+function parseApprover(value) {
+  try {
+    const parsed = JSON.parse(value || '');
+    if (parsed && parsed.type === 'group' && typeof parsed.groupId === 'string') return { type: 'group', groupId: parsed.groupId };
+  } catch {
+    // Standard
+  }
+  return { type: 'admins' };
+}
 
 function toOrganization(entity) {
   return {
@@ -13,7 +23,9 @@ function toOrganization(entity) {
     status: entity.status,
     createdAt: entity.createdAt,
     createdBy: entity.createdBy || '',
-    modules: parseList(entity.modules),
+    modules: knownModules(parseList(entity.modules)),
+    // Wer DATEV-Rechte-Anträge freigibt: { type: 'admins' } oder { type: 'group', groupId }
+    rightsApprover: parseApprover(entity.rightsApprover),
   };
 }
 
@@ -71,6 +83,7 @@ async function update(organizationId, patch) {
     changes.status = patch.status;
   }
   if (patch.modules !== undefined) changes.modules = JSON.stringify(validateModules(patch.modules));
+  if (patch.rightsApprover !== undefined) changes.rightsApprover = JSON.stringify(patch.rightsApprover);
   await client.updateEntity({ partitionKey: PARTITION, rowKey: organizationId, ...changes }, 'Merge', { etag: entity.etag });
   return toOrganization({ ...entity, ...changes });
 }

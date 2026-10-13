@@ -1030,3 +1030,57 @@ a.avatar { display: grid; place-items: center; text-decoration: none; }
 @media (max-width: 900px) {
   .profile-columns { grid-template-columns: minmax(0, 1fr); }
 }
+/* Zähler in der Rail */
+.rail-item { position: relative; }
+.rail-badge { position: absolute; top: 3px; right: 12px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: #C8102E; color: #FFFFFF; font-size: 10px; font-weight: 800; line-height: 16px; text-align: center; }
+
+/* Textfelder */
+.field textarea { padding: 9px 11px; border: 1px solid #D8D3CF; border-radius: 7px; font: inherit; font-size: 14px; font-weight: 500; resize: vertical; }
+
+/* DATEV-Rechte */
+.rights-tree { display: grid; gap: 14px; }
+.rights-area { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; }
+.rights-area legend { font-size: 13px; font-weight: 800; margin-bottom: 6px; color: #17171A; }
+.rights-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px 12px; border: 1px solid #EEEAE7; border-radius: 8px; cursor: pointer; }
+.rights-item input { margin-top: 3px; }
+.rights-item.is-checked { border-color: #B9BEEF; background: #F6F7FE; }
+.rights-item.is-changed { box-shadow: inset 3px 0 0 #D99A1E; }
+.rights-item-text { display: grid; gap: 2px; min-width: 0; }
+.rights-item-text strong { font-size: 14px; }
+.rights-item-text span { font-size: 12px; color: #6E6E74; line-height: 1.4; }
+.rights-flags { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.approver-setting { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.approver-setting .field { min-width: 220px; }
+.request-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.request-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid #F3F0EE; font-size: 14px; }
+.request-list li:last-child { border-bottom: 0; }
+
+/* Antrag */
+.request-columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
+.timeline { list-style: none; margin: 0; padding: 0 0 0 18px; display: grid; gap: 14px; border-left: 2px solid #E2DDD9; }
+.timeline li { position: relative; display: grid; gap: 2px; font-size: 13px; }
+.timeline li::before { content: ''; position: absolute; left: -25px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: #5F67D3; border: 2px solid #FFFFFF; }
+.timeline li.is-open::before { background: #FFFFFF; border-color: #A5A5AB; }
+.timeline li span { color: #6E6E74; }
+.timeline li em { color: #3D3D42; font-size: 12px; }
+
+/* To-dos */
+.todo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.todo-item { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.todo-item.is-done { opacity: .6; }
+.todo-main { display: grid; gap: 6px; min-width: 0; }
+.todo-main .hint { margin: 0; }
+.todo-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.todo-actions { display: flex; gap: 8px; flex: none; }
+
+/* Kanzlei */
+.mandant-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.mandant-card { display: grid; gap: 10px; color: inherit; text-decoration: none; transition: box-shadow .15s, transform .15s; }
+.mandant-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, .1); }
+.inline-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+
+@media (max-width: 900px) {
+  .request-columns { grid-template-columns: minmax(0, 1fr); }
+  .inline-form { grid-template-columns: minmax(0, 1fr); }
+  .todo-item { flex-direction: column; align-items: stretch; }
+}

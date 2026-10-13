@@ -5,6 +5,7 @@ const members = require('./members');
 const audit = require('./audit');
 const { effectivePermissions } = require('./permissions');
 const groups = require('./groups');
+const staff = require('./staff');
 
 const LAST_LOGIN_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -84,13 +85,14 @@ function ensureMigrated() {
 // Ermittelt Identität, Organisation, Rolle und Status serverseitig für jede Anfrage.
 async function resolveContext(request) {
   const principal = readPrincipal(request);
-  if (!principal) return { principal: null, isPlatformAdmin: false, membership: null };
+  if (!principal) return { principal: null, isPlatformAdmin: false, membership: null, staff: null };
   await ensureMigrated();
 
   // Unabhängige Abfragen parallel, damit jede Anfrage schneller beantwortet wird.
-  const [isPlatformAdmin, index] = await Promise.all([
+  const [isPlatformAdmin, index, staffEntry] = await Promise.all([
     resolvePlatformAdmin(principal),
     members.findMembership(principal.identityId),
+    staff.resolve(principal),
   ]);
 
   let membership = null;
@@ -122,7 +124,7 @@ async function resolveContext(request) {
     }
   }
 
-  return { principal, isPlatformAdmin, membership };
+  return { principal, isPlatformAdmin, membership, staff: staffEntry };
 }
 
 module.exports = { resolveContext, migrateLegacyIdentities };

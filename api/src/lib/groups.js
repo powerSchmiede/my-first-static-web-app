@@ -6,7 +6,7 @@
 const crypto = require('crypto');
 const { table, getOrNull, listAll, odata, isConflict } = require('./tables');
 const { HttpError } = require('./errors');
-const { parseList, validatePermissions } = require('./permissions');
+const { parseList, validatePermissions, knownPermissions } = require('./permissions');
 
 const PREFIX = 'grp_';
 const RANGE = { from: 'grp_', to: 'grp`' };
@@ -16,7 +16,7 @@ function toGroup(entity) {
   return {
     id: entity.rowKey.slice(PREFIX.length),
     name: entity.name,
-    permissions: parseList(entity.permissions),
+    permissions: knownPermissions(parseList(entity.permissions)),
     createdAt: entity.createdAt,
   };
 }

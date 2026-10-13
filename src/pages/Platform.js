@@ -71,6 +71,7 @@ export function PlatformNav({ active }) {
     <nav className="tabs" aria-label="Plattform">
       <Link to="/plattform" className={active === 'orgs' ? 'is-active' : ''} aria-current={active === 'orgs' ? 'page' : undefined}>Organisationen</Link>
       <Link to="/plattform/apps" className={active === 'apps' ? 'is-active' : ''} aria-current={active === 'apps' ? 'page' : undefined}>KanzleiMind-Apps</Link>
+      <Link to="/plattform/team" className={active === 'team' ? 'is-active' : ''} aria-current={active === 'team' ? 'page' : undefined}>Kanzlei-Team</Link>
     </nav>
   );
 }

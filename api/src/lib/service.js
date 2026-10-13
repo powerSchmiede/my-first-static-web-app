@@ -11,6 +11,8 @@ const catalog = require('./catalog');
 const permissions = require('./permissions');
 const groups = require('./groups');
 const profiles = require('./profiles');
+const workflow = require('./workflow');
+const staffStore = require('./staff');
 
 const INVITES_PER_HOUR = 50;
 
@@ -129,6 +131,7 @@ async function removeUser(ctx, organizationId, userId) {
   await members.deleteUser(organizationId, userId);
   await catalog.purgeUser(organizationId, userId);
   await profiles.remove(organizationId, userId);
+  await workflow.purgeUser(organizationId, userId, ctx.principal.email);
   await audit.record(ctx, { organizationId, action: 'user.removed', targetType: 'user', targetId: userId, details: { email: user.email, role: user.role } });
 }
 
@@ -271,6 +274,7 @@ async function deleteOrganization(ctx, organizationId, confirmName) {
 
   const counts = await members.purgeOrganization(organizationId);
   const auditEntries = await audit.purgeOrganization(organizationId);
+  await staffStore.removeOrganizationEverywhere(organizationId);
   await organizations.remove(organizationId);
   await audit.record(ctx, {
     action: 'organization.deleted',
@@ -738,14 +742,23 @@ function checkModuleAccess(ctx, moduleKey) {
   return { module: moduleKey, access: true };
 }
 
-function me(ctx) {
+async function me(ctx) {
   if (!ctx.principal) return { authenticated: false };
+  // Erst zur Laufzeit laden, sonst entsteht ein Ring zwischen service und workflowService.
+  const workflowService = require('./workflowService');
+  let staffInfo = null;
+  if (ctx.staff) {
+    const orgs = await Promise.all(ctx.staff.organizationIds.map(id => organizations.get(id)));
+    staffInfo = { name: ctx.staff.name, organizations: orgs.filter(Boolean).map(o => ({ id: o.id, name: o.name })) };
+  }
   return {
     authenticated: true,
     email: ctx.principal.email,
     name: ctx.principal.name,
     isPlatformAdmin: ctx.isPlatformAdmin,
     membership: ctx.membership,
+    staff: staffInfo,
+    openTodos: (ctx.membership || ctx.staff) ? await workflowService.countOpenTodos(ctx) : 0,
   };
 }
 

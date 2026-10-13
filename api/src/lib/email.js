@@ -56,4 +56,37 @@ async function sendInvitation({ to, organizationName, role, inviterName, token, 
   }
 }
 
-module.exports = { sendInvitation, invitationLink };
+function appLink(path) {
+  const base = baseUrl();
+  return base ? `${base}${path}` : path;
+}
+
+// Allgemeine Benachrichtigung mit Link in die App (z. B. neues To-do).
+async function sendNotification({ to, subject, intro, linkLabel, path }) {
+  const connection = process.env.ACS_CONNECTION_STRING;
+  const sender = process.env.EMAIL_SENDER_ADDRESS;
+  const recipients = [...new Set((to || []).filter(Boolean))];
+  if (!connection || !sender || !baseUrl()) return { sent: false, reason: 'not_configured' };
+  if (!recipients.length) return { sent: false, reason: 'no_recipients' };
+  const link = appLink(path);
+  const plainText = ['Hallo,', '', intro, '', `${linkLabel}: ${link}`].join('\n');
+  const html = `<p>Hallo,</p><p>${escapeHtml(intro)}</p>
+<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 18px;background:#17171A;color:#fff;border-radius:7px;text-decoration:none">${escapeHtml(linkLabel)}</a></p>
+<p style="color:#6E6E74;font-size:13px">Diese Nachricht wurde von KanzleiMind versendet.</p>`;
+  try {
+    const { EmailClient } = require('@azure/communication-email');
+    const client = new EmailClient(connection);
+    const poller = await client.beginSend({
+      senderAddress: sender,
+      content: { subject, plainText, html },
+      recipients: { to: [], bcc: recipients.map(address => ({ address })) },
+    });
+    const result = await poller.pollUntilDone();
+    return { sent: result.status === 'Succeeded', reason: result.status === 'Succeeded' ? '' : 'send_failed' };
+  } catch (e) {
+    console.error('E-Mail-Versand fehlgeschlagen', e.message);
+    return { sent: false, reason: 'send_failed' };
+  }
+}
+
+module.exports = { sendInvitation, invitationLink, sendNotification, appLink };
