@@ -272,8 +272,9 @@ function App() {
       const base = `/plattform/org/${encodeURIComponent(segments[2])}`;
       page = <Organization key={segments[2]} orgId={segments[2]} tab={segments[3]} basePath={base} me={me} platformView backLink={<Link to="/plattform" className="back-link">← Alle Organisationen</Link>} />;
     } else page = <Platform />;
-  } else if (me.staff && !membership) {
+  } else if (me.staff && !membership && !platformAdmin) {
     // Kanzlei-Mitarbeitende ohne eigene Organisation starten bei ihren Mandanten.
+    // Plattform-Admins (auch wenn sie zusätzlich zum Kanzlei-Team gehören) sehen hier die Apps.
     section = 'kanzlei';
     page = <Kanzlei key="list" />;
   } else {
